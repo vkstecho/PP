@@ -1,0 +1,1435 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
+  <meta name="mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+  <meta name="theme-color" content="#1a305c"/>
+  <title>Plan Power — GLS Polyfilms Met Dept</title>
+  <link rel="manifest" href="manifest.json"/>
+  <link rel="icon" type="image/png" sizes="32x32" href="icons/icon-32.png"/>
+  <link rel="icon" type="image/png" sizes="16x16" href="icons/icon-16.png"/>
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png"/>
+  <script>
+    if('serviceWorker' in navigator){
+      const loc = window.location.href;
+      const isLocal = loc.startsWith('http://localhost') || loc.startsWith('http://127.');
+      const isHTTPS = loc.startsWith('https://');
+      if(isHTTPS || isLocal){
+        window.addEventListener('load',()=>{
+          navigator.serviceWorker.register('./sw.js')
+            .then(()=>console.log('%cPlan Power SW ready','color:#22c55e;font-weight:bold'))
+            .catch(e=>console.warn('SW:',e));
+        });
+      }
+    }
+  </script>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    html,body,#root{height:100%;font-family:system-ui,sans-serif;background:#f0f4f8}
+    #pp-splash{position:fixed;inset:0;z-index:9999;background:linear-gradient(150deg,#1a305c 0%,#0c1a35 55%,#0f2040 100%);display:flex;flex-direction:column;align-items:center;justify-content:center;transition:opacity .6s ease}
+    #pp-splash.fade{opacity:0;pointer-events:none}
+    /* Hard fallback: if React takes too long, force hide after 5s */
+    .pp-ring{position:absolute;border-radius:50%;top:50%;left:50%;transform:translate(-50%,-50%);pointer-events:none;border:1px solid rgba(251,191,36,.06)}
+    .pp-title{font-size:32px;font-weight:800;color:#fff;letter-spacing:.5px;margin-top:16px}
+    .pp-sub{font-size:13px;color:rgba(255,255,255,.35);margin-top:6px;letter-spacing:.8px}
+    .pp-loader{display:flex;gap:7px;margin-top:28px}
+    .pp-dot{width:8px;height:8px;border-radius:50%;background:#fbbf24;animation:ppDot 1.2s ease-in-out infinite}
+    .pp-dot:nth-child(2){animation-delay:.2s}.pp-dot:nth-child(3){animation-delay:.4s}
+    @keyframes ppDot{0%,80%,100%{opacity:.2;transform:scale(.8)}40%{opacity:1;transform:scale(1)}}
+  </style>
+</head>
+<body>
+<div id="pp-splash">
+  <div class="pp-ring" style="width:200px;height:200px"></div>
+  <div class="pp-ring" style="width:320px;height:320px"></div>
+  <div class="pp-ring" style="width:440px;height:440px"></div>
+  <div class="pp-ring" style="width:560px;height:560px"></div>
+  <svg width="96" height="96" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <radialGradient id="spbg" cx="50%" cy="40%" r="70%">
+        <stop offset="0%" stop-color="#1e3a6e"/>
+        <stop offset="60%" stop-color="#0f1e3a"/>
+        <stop offset="100%" stop-color="#060e20"/>
+      </radialGradient>
+      <linearGradient id="spgh" x1="0%" y1="0%" x2="60%" y2="100%">
+        <stop offset="0%" stop-color="#fff0a0"/>
+        <stop offset="35%" stop-color="#fbbf24"/>
+        <stop offset="100%" stop-color="#c47a00"/>
+      </linearGradient>
+      <linearGradient id="spgl" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%" stop-color="#fff3c4"/>
+        <stop offset="50%" stop-color="#fbbf24"/>
+        <stop offset="100%" stop-color="#a06000"/>
+      </linearGradient>
+      <filter id="spglow" x="-25%" y="-25%" width="150%" height="150%">
+        <feGaussianBlur in="SourceGraphic" stdDeviation="2.5" result="b"/>
+        <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+      </filter>
+    </defs>
+    <circle cx="100" cy="100" r="98" fill="url(#spbg)"/>
+    <circle cx="100" cy="100" r="93" fill="none" stroke="#fbbf24" stroke-width="3.5" opacity="0.95"/>
+    <circle cx="100" cy="100" r="86" fill="none" stroke="#fbbf24" stroke-width="0.8" opacity="0.35"/>
+    <ellipse cx="100" cy="46" rx="58" ry="30" fill="rgba(255,255,255,0.07)"/>
+    <!-- LEFT P -->
+    <g filter="url(#spglow)">
+      <rect x="56.5" y="58" width="12" height="56" rx="2" fill="url(#spgl)"/>
+      <rect x="57" y="58" width="5" height="56" rx="2" fill="#fff0a0" opacity="0.55"/>
+      <path d="M68.5 58 C68.5 58 105 58 105 80 C105 102 68.5 102 68.5 102 L68.5 91 C68.5 91 91 91 91 80 C91 69 68.5 69 68.5 69 Z" fill="url(#spgh)"/>
+    </g>
+    <path d="M57 114 L67 114 L57.5 132 L66 132 L51.5 158 L64 140.5 L55 140.5 Z" fill="#fbbf24" filter="url(#spglow)"/>
+    <path d="M57 114 L61 114 L57.5 122 L60 122 Z" fill="#fff0a0" opacity="0.7"/>
+    <!-- RIGHT P -->
+    <g filter="url(#spglow)">
+      <rect x="131.5" y="58" width="12" height="56" rx="2" fill="url(#spgl)"/>
+      <rect x="137" y="58" width="5" height="56" rx="2" fill="#fff0a0" opacity="0.55"/>
+      <path d="M131.5 58 C131.5 58 95 58 95 80 C95 102 131.5 102 131.5 102 L131.5 91 C131.5 91 109 91 109 80 C109 69 131.5 69 131.5 69 Z" fill="url(#spgh)"/>
+    </g>
+    <path d="M143 114 L133 114 L142.5 132 L134 132 L148.5 158 L136 140.5 L145 140.5 Z" fill="#fbbf24" filter="url(#spglow)"/>
+    <path d="M143 114 L139 114 L142.5 122 L140 122 Z" fill="#fff0a0" opacity="0.7"/>
+    <!-- Pupils -->
+    <circle cx="85" cy="80" r="5.5" fill="#06121e" opacity="0.88"/>
+    <circle cx="115" cy="80" r="5.5" fill="#06121e" opacity="0.88"/>
+    <circle cx="85" cy="80" r="2.5" fill="#1040a0" opacity="0.7"/>
+    <circle cx="115" cy="80" r="2.5" fill="#1040a0" opacity="0.7"/>
+    <circle cx="87" cy="77.5" r="1.8" fill="rgba(255,255,255,0.75)"/>
+    <circle cx="117" cy="77.5" r="1.8" fill="rgba(255,255,255,0.75)"/>
+    <!-- Crown -->
+    <polygon points="100,4 102.5,9.5 108.5,9.5 103.8,13.2 105.8,19 100,15.5 94.2,19 96.2,13.2 91.5,9.5 97.5,9.5" fill="#fde68a" opacity="0.92"/>
+    <circle cx="100" cy="100" r="97" fill="none" stroke="rgba(0,0,0,0.4)" stroke-width="3"/>
+  </svg>
+  <div class="pp-title">PLAN POWER</div>
+  <div class="pp-sub">GLS POLYFILMS · MET DEPARTMENT</div>
+  <div class="pp-loader"><div class="pp-dot"></div><div class="pp-dot"></div><div class="pp-dot"></div></div>
+  <div style="font-size:11px;color:rgba(255,255,255,.25);margin-top:14px;letter-spacing:.5px">Compiling app…</div>
+  <div id="pp-err"></div>
+</div>
+<div id="root"></div>
+<script>
+  // Catch any JS errors and show on screen instead of blank
+  window.onerror = function(msg, src, line, col, err) {
+    var s = document.getElementById('pp-splash');
+    if(s) { s.style.display = 'flex'; s.style.opacity = '1'; }
+    var el = document.getElementById('pp-err');
+    if(el) el.innerHTML = '<div style="background:rgba(220,38,38,.9);color:#fff;padding:14px 18px;border-radius:10px;max-width:340px;font-size:13px;margin-top:16px;text-align:left"><b>⚠ Error</b><br>'+msg+'<br><small>'+src+':'+line+'</small></div>';
+    return false;
+  };
+  // Hard fallback: hide splash after 12s regardless of React status
+  setTimeout(function(){
+    var s=document.getElementById('pp-splash');
+    if(s&&s.style.display!=='none'){s.classList.add('fade');setTimeout(function(){s.style.display='none';},700);}
+  }, 12000);
+</script>
+
+<script type="text/babel" data-presets="react">
+const { useState, useMemo, useCallback, useEffect, useRef } = React;
+const XLSX = window.XLSX;
+
+const DEFAULT_CONFIG = {
+  boatTarget:550000,planThresh:40000,trimMax:15,trimSide:250,
+  trimMinOD22:5,trimMinOD25:10,jumboPref:3000,
+  boatCap22:7,boatCap25:5,boatCap28:4,
+  nextPlanNo:"M-074",
+  companyName:"GLS POLYFILMS PVT. LTD., GURAWARA, REWARI",
+  deptName:"Met Dept — Production Planning System",
+  appName:"Plan Power",
+};
+
+const OD_COMPAT = {"22":["22","25","28"],"25":["25","28"],"28":["28"]};
+const M_RANGE   = {"M-1":[1910,3290],"M-2":[2900,3630]};
+
+const toInt   = v => parseInt(String(v||"").replace(/[\s,]/g,""))||0;
+const toFloat = v => parseFloat(String(v||"").trim())||0;
+const uid     = () => Math.random().toString(36).slice(2,9);
+const fmtNum  = n => n>=100000?(n/100000).toFixed(2)+" L":n.toLocaleString("en-IN");
+
+function parseMat(raw){
+  const s=String(raw||"").trim();
+  return{od:(s.match(/M(22|25|28)$/)||[])[1]||null,thick:+((s.match(/G(\d{2})\d/)||[])[1]||0)||null,grade:(s.match(/G\d{2}(\d{3})/)||[])[1]||null,isAB:s.includes("AB")};
+}
+function canFill(stockRaw,orderRaw){
+  const s=parseMat(String(stockRaw||"").replace(/^3SF/,"3FG")),o=parseMat(String(orderRaw||""));
+  if(!s.thick||s.thick!==o.thick)return false;
+  if(!(OD_COMPAT[o.od]||[o.od]).includes(s.od))return false;
+  if(o.isAB&&!s.isAB)return false;
+  return true;
+}
+async function readXL(file){
+  return new Promise((res,rej)=>{
+    const fr=new FileReader();
+    fr.onload=e=>{try{const wb=XLSX.read(e.target.result,{type:"array",cellDates:true});res(XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:null,raw:false}));}catch(err){rej(err);}};
+    fr.onerror=rej;fr.readAsArrayBuffer(file);
+  });
+}
+function buildMetPlan(bareData,penData,cfg){
+  const bare=bareData.filter(r=>r.Batch),pend=penData.filter(r=>r.Material&&toInt(r["Pending Rolls"])>0);
+  const rows=bare.map(b=>{
+    const bW=toInt(b.Width),bL=toInt(String(b.Length).replace(/\s/g,"")),bTh=toFloat(b.Thickness);
+    const sv=pend.filter(o=>Math.abs(toFloat(o.Thickness)-bTh)<0.5);
+    const odC={"22":0,"25":0,"28":0};
+    sv.forEach(o=>{const p=parseMat(String(o.Material));if(p.od)odC[p.od]+=toInt(o["Pending Rolls"]);});
+    const dom=Object.entries(odC).sort((a,b)=>b[1]-a[1])[0]?.[0]||"22";
+    const m1ok=bW>=1910&&bW<=3290,m2ok=bW>=2900&&bW<=3630;
+    return{id:uid(),machine:m1ok&&!m2ok?"M-1":!m1ok&&m2ok?"M-2":"M-1",m1ok,m2ok,setNo:1,slotNo:1,odType:dom,
+      bareMat:String(b.Material||"").trim(),batch:String(b.Batch||"").trim(),width:bW,length:bL,thickness:bTh,
+      outputMat:String(b.Material||"").replace("3FG-G","3SF-G").trim(),
+      customers:[...new Set(sv.map(o=>String(o["Consignee Name"]||"").split(" ").slice(0,2).join(" ")))].join(", ")||"-",
+      cumMeters:0,notes:"",priority:dom==="22"?0:dom==="25"?1:2};
+  });
+  ["M-1","M-2"].forEach(machine=>{
+    const mr=rows.filter(r=>r.machine===machine);mr.sort((a,b)=>a.priority-b.priority);
+    let sN=1,slN=1,cum=0,slots=0,cap={22:cfg.boatCap22,25:cfg.boatCap25,28:cfg.boatCap28}[mr[0]?.odType||"22"]||5;
+    mr.forEach((r,i)=>{
+      if(i>0&&(slots>=cap||cum>=cfg.boatTarget)){sN++;slN=1;slots=0;cum=0;cap={22:cfg.boatCap22,25:cfg.boatCap25,28:cfg.boatCap28}[r.odType]||5;}
+      r.setNo=sN;r.slotNo=slN;cum+=r.length;r.cumMeters=cum;slN++;slots++;
+    });
+  });
+  return rows;
+}
+const newPlanRow=()=>({id:uid(),machine:"M-1",material:"",jLength:72000,slit:24000,trim:10,arms:["","","","",""],sets:1,io:"I",pack:"WM"});
+const getKey=o=>`${o["Sales Order"]}-${o["Sale Order Item"]}`;
+
+const SRC={
+  FGJM:{text:"#166534",border:"#86efac",badge:"#dcfce7",label:"FGJM"},
+  MJ:  {text:"#1e40af",border:"#93c5fd",badge:"#dbeafe",label:"MJ->Slit"},
+  BARE:{text:"#92400e",border:"#fbbf24",badge:"#fef9c3",label:"BARE->Met"},
+  NONE:{text:"#991b1b",border:"#fca5a5",badge:"#fee2e2",label:"No Stock"},
+};
+const OD_STYLE={
+  "22":{bg:"#f0fdf4",border:"#86efac",text:"#166534",label:"2.2 OD"},
+  "25":{bg:"#eff6ff",border:"#93c5fd",text:"#1e40af",label:"2.5 OD"},
+  "28":{bg:"#fff7ed",border:"#fdba74",text:"#92400e",label:"2.8 OD"},
+  "??":{bg:"#f8fafc",border:"#cbd5e1",text:"#64748b",label:"? OD"},
+};
+
+const C={
+  navy:"#1a305c",gold:"#f59e0b",accent:"#1d4ed8",accentLt:"#eff6ff",
+  bg:"#f0f4f8",card:"#fff",border:"#dde3ed",
+  text:"#1e2a3a",textMd:"#4b5a6e",textLt:"#94a3b8",
+  green:"#15803d",greenLt:"#f0fdf4",greenBd:"#86efac",
+  amber:"#92400e",amberLt:"#fef9c3",amberBd:"#fbbf24",
+  red:"#991b1b",redLt:"#fef2f2",redBd:"#fca5a5",
+};
+const inp=(x={})=>({background:"#f7f9fc",border:`1.5px solid #dde3ed`,borderRadius:9,padding:"10px 13px",width:"100%",fontSize:14,color:"#1e2a3a",outline:"none",fontFamily:"inherit",minHeight:40,...x});
+const btn=(bg,fg,x={})=>({background:bg||"#1d4ed8",color:fg||"#fff",border:"none",borderRadius:9,padding:"9px 16px",cursor:"pointer",fontSize:13,fontWeight:700,display:"inline-flex",alignItems:"center",justifyContent:"center",gap:6,minHeight:38,fontFamily:"inherit",...x});
+const card=(x={})=>({background:"#fff",border:"1px solid #dde3ed",borderRadius:14,padding:18,boxShadow:"0 1px 6px rgba(26,48,92,.07)",...x});
+const lbl={fontSize:11,color:"#4b5a6e",fontWeight:700,textTransform:"uppercase",letterSpacing:.6,marginBottom:5,display:"block"};
+
+const CSS=`
+  @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+  *,*::before,*::after{box-sizing:border-box}
+  html,body{font-family:'Plus Jakarta Sans',system-ui,sans-serif;background:#f0f4f8;color:#1e2a3a}
+  ::-webkit-scrollbar{width:5px;height:5px}::-webkit-scrollbar-thumb{background:#c4cfd9;border-radius:4px}
+  input,select,button{font-family:inherit}
+  input:focus,select:focus{outline:2px solid #1d4ed8!important}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  @keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+  @keyframes bounce{0%,80%,100%{transform:translateY(0)}40%{transform:translateY(-5px)}}
+  @keyframes ppPulse{0%,100%{box-shadow:0 2px 12px rgba(251,191,36,.5)}50%{box-shadow:0 2px 24px rgba(251,191,36,.9)}}
+  @keyframes toastIn{from{opacity:0;transform:translateX(-50%) translateY(10px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
+  .pprow:hover td{background:#f4f7fd!important}
+  .ppec{background:transparent;border:none;width:100%;font-family:inherit;font-size:13px;color:#1e2a3a;padding:2px 4px;border-radius:4px}
+  .ppec:focus{background:#eff6ff;outline:none;border-bottom:2px solid #1d4ed8}
+  .pp-toast{position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:#1a305c;color:#fff;padding:10px 22px;border-radius:12px;font-size:13px;font-weight:700;z-index:9999;white-space:nowrap;box-shadow:0 4px 20px rgba(0,0,0,.25);animation:toastIn .25s ease}
+  .pp-fab{position:fixed;bottom:24px;right:24px;z-index:200;width:60px;height:60px;border-radius:50%;background:linear-gradient(135deg,#1a305c,#0f1e3a);border:2px solid rgba(251,191,36,.4);cursor:pointer;font-size:22px;box-shadow:0 6px 24px rgba(26,48,92,.4);display:flex;align-items:center;justify-content:center;transition:transform .15s}
+  .pp-fab:hover{transform:scale(1.1)}
+  .upload-zone{border:2px dashed #dde3ed;border-radius:12px;padding:22px;text-align:center;cursor:pointer;transition:border-color .2s,background .2s}
+  .upload-zone:hover{border-color:#1d4ed8;background:#f0f7ff}
+  .upload-zone.loaded{border-color:#86efac;background:#f0fdf4}
+`;
+
+const Logo=({size=34})=>(
+  <svg width={size} height={size} viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <radialGradient id="ppBg" cx="50%" cy="40%" r="70%">
+        <stop offset="0%" stopColor="#1e3a6e"/>
+        <stop offset="60%" stopColor="#0f1e3a"/>
+        <stop offset="100%" stopColor="#060e20"/>
+      </radialGradient>
+      <linearGradient id="ppGh" x1="0%" y1="0%" x2="60%" y2="100%">
+        <stop offset="0%" stopColor="#fff0a0"/>
+        <stop offset="35%" stopColor="#fbbf24"/>
+        <stop offset="100%" stopColor="#c47a00"/>
+      </linearGradient>
+      <linearGradient id="ppGl" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%" stopColor="#fff3c4"/>
+        <stop offset="50%" stopColor="#fbbf24"/>
+        <stop offset="100%" stopColor="#a06000"/>
+      </linearGradient>
+      <filter id="ppGlow" x="-25%" y="-25%" width="150%" height="150%">
+        <feGaussianBlur in="SourceGraphic" stdDeviation="2.5" result="b"/>
+        <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+      </filter>
+    </defs>
+    <circle cx="100" cy="100" r="98" fill="url(#ppBg)"/>
+    <circle cx="100" cy="100" r="93" fill="none" stroke="#fbbf24" strokeWidth="3.5" opacity="0.95"/>
+    <circle cx="100" cy="100" r="86" fill="none" stroke="#fbbf24" strokeWidth="0.8" opacity="0.35"/>
+    <ellipse cx="100" cy="46" rx="58" ry="30" fill="rgba(255,255,255,0.06)"/>
+    <g filter="url(#ppGlow)">
+      <rect x="56.5" y="58" width="12" height="56" rx="2" fill="url(#ppGl)"/>
+      <rect x="57" y="58" width="5" height="56" rx="2" fill="#fff0a0" opacity="0.5"/>
+      <path d="M68.5 58 C68.5 58 105 58 105 80 C105 102 68.5 102 68.5 102 L68.5 91 C68.5 91 91 91 91 80 C91 69 68.5 69 68.5 69 Z" fill="url(#ppGh)"/>
+    </g>
+    <path d="M57 114 L67 114 L57.5 132 L66 132 L51.5 158 L64 140.5 L55 140.5 Z" fill="#fbbf24" filter="url(#ppGlow)"/>
+    <path d="M57 114 L61 114 L57.5 122 L60 122 Z" fill="#fff0a0" opacity="0.7"/>
+    <g filter="url(#ppGlow)">
+      <rect x="131.5" y="58" width="12" height="56" rx="2" fill="url(#ppGl)"/>
+      <rect x="137" y="58" width="5" height="56" rx="2" fill="#fff0a0" opacity="0.5"/>
+      <path d="M131.5 58 C131.5 58 95 58 95 80 C95 102 131.5 102 131.5 102 L131.5 91 C131.5 91 109 91 109 80 C109 69 131.5 69 131.5 69 Z" fill="url(#ppGh)"/>
+    </g>
+    <path d="M143 114 L133 114 L142.5 132 L134 132 L148.5 158 L136 140.5 L145 140.5 Z" fill="#fbbf24" filter="url(#ppGlow)"/>
+    <path d="M143 114 L139 114 L142.5 122 L140 122 Z" fill="#fff0a0" opacity="0.7"/>
+    <circle cx="85" cy="80" r="5.5" fill="#06121e" opacity="0.88"/>
+    <circle cx="115" cy="80" r="5.5" fill="#06121e" opacity="0.88"/>
+    <circle cx="85" cy="80" r="2.5" fill="#1040a0" opacity="0.7"/>
+    <circle cx="115" cy="80" r="2.5" fill="#1040a0" opacity="0.7"/>
+    <circle cx="87" cy="77.5" r="1.8" fill="rgba(255,255,255,0.75)"/>
+    <circle cx="117" cy="77.5" r="1.8" fill="rgba(255,255,255,0.75)"/>
+    <polygon points="100,4 102.5,9.5 108.5,9.5 103.8,13.2 105.8,19 100,15.5 94.2,19 96.2,13.2 91.5,9.5 97.5,9.5" fill="#fde68a" opacity="0.92"/>
+    <circle cx="100" cy="100" r="97" fill="none" stroke="rgba(0,0,0,0.35)" strokeWidth="3"/>
+  </svg>
+);
+const Spin=({size=18,color="#fff"})=><span style={{display:"inline-block",width:size,height:size,border:"3px solid rgba(0,0,0,.1)",borderTopColor:color,borderRadius:"50%",animation:"spin .8s linear infinite",flexShrink:0}}/>;
+
+function ChatBot({analysis,metPlan,cfg,onClose}){
+  const [msgs,setMsgs]=useState([{role:"assistant",text:`Hello! I am your Plan Power AI.\n\nOrders: ${analysis?.pend?.length||0}\nRuns: ${metPlan?.length||0}\nBoat target: ${fmtNum(cfg.boatTarget)} m/set\n\nAsk me about your production plan!`}]);
+  const [input,setInput]=useState("");
+  const [loading,setLoading]=useState(false);
+  const endRef=useRef(null);
+  useEffect(()=>{endRef.current?.scrollIntoView({behavior:"smooth"});},[msgs]);
+  const ctx=()=>[
+    `You are Plan Power AI, expert planning assistant for ${cfg.companyName} Met Department.`,
+    `Boat target: ${fmtNum(cfg.boatTarget)} m/set. 2.2OD max ${cfg.boatCap22} runs, 2.5OD max ${cfg.boatCap25}, 2.8OD max ${cfg.boatCap28}.`,
+    `Trim max: ${cfg.trimMax}mm. M-1: 1910-3290mm, M-2: 2900-3630mm.`,
+    analysis?`Data: ${analysis.pend.length} orders, ${(analysis.totalKg/1000).toFixed(1)}MT total.`:"No data loaded.",
+    "Answer concisely."
+  ].join("\n");
+  const send=async()=>{
+    if(!input.trim()||loading)return;
+    const msg=input.trim();setInput("");
+    setMsgs(m=>[...m,{role:"user",text:msg}]);setLoading(true);
+    try{
+      const hist=msgs.slice(-8).map(m=>({role:m.role==="assistant"?"assistant":"user",content:m.text}));
+      const res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:600,system:ctx(),messages:[...hist,{role:"user",content:msg}]})});
+      const d=await res.json();
+      setMsgs(m=>[...m,{role:"assistant",text:d.content?.map(c=>c.text||"").join("")||"No response."}]);
+    }catch{setMsgs(m=>[...m,{role:"assistant",text:"Connection error. Try again."}]);}
+    setLoading(false);
+  };
+  const render=t=>t.split("\n").map((l,i)=><div key={i} style={{marginBottom:l?2:6}}>{l||"\u00a0"}</div>);
+  const QUICK=["Boat life rules?","OD substitution rules?","M-1 vs M-2 width?","Trim tolerance?"];
+  return(
+    <div style={{position:"fixed",bottom:0,right:0,zIndex:500,display:"flex",flexDirection:"column",width:"min(400px,100vw)",height:"min(560px,90vh)",background:"#fff",border:"1.5px solid #dde3ed",borderRadius:"14px 0 0 0",boxShadow:"0 -4px 32px rgba(26,48,92,.22)"}}>
+      <div style={{background:C.navy,padding:"12px 16px",borderRadius:"13px 0 0 0",display:"flex",alignItems:"center",gap:10,flexShrink:0}}>
+        <Logo size={26}/>
+        <div style={{flex:1}}><div style={{color:"#fff",fontWeight:800,fontSize:14}}>Plan Power AI</div><div style={{color:"rgba(255,255,255,.4)",fontSize:11}}>Planning Assistant</div></div>
+        <button onClick={onClose} style={{background:"rgba(255,255,255,.1)",border:"none",color:"#fff",borderRadius:7,padding:"4px 10px",cursor:"pointer",fontSize:16,fontWeight:800}}>✕</button>
+      </div>
+      <div style={{flex:1,overflowY:"auto",padding:"10px 13px",display:"flex",flexDirection:"column",gap:8}}>
+        {msgs.map((m,i)=>(
+          <div key={i} style={{display:"flex",gap:7,justifyContent:m.role==="user"?"flex-end":"flex-start"}}>
+            {m.role==="assistant"&&<div style={{width:24,height:24,borderRadius:12,background:C.navy,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontSize:11,color:"#fbbf24",fontWeight:800}}>P</div>}
+            <div style={{maxWidth:"80%",padding:"8px 12px",borderRadius:m.role==="user"?"13px 13px 4px 13px":"13px 13px 13px 4px",background:m.role==="user"?C.accent:"#f1f5f9",color:m.role==="user"?"#fff":C.text,fontSize:13,lineHeight:1.55}}>{render(m.text)}</div>
+          </div>
+        ))}
+        {loading&&<div style={{display:"flex",gap:7,alignItems:"center"}}><div style={{width:24,height:24,borderRadius:12,background:C.navy,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,color:"#fbbf24",fontWeight:800}}>P</div><div style={{padding:"8px 12px",background:"#f1f5f9",borderRadius:"13px 13px 13px 4px",display:"flex",gap:5}}>{[0,1,2].map(i=><span key={i} style={{width:6,height:6,borderRadius:3,background:"#94a3b8",display:"inline-block",animation:`bounce .9s ${i*.2}s infinite`}}/>)}</div></div>}
+        <div ref={endRef}/>
+      </div>
+      {msgs.length<=1&&<div style={{padding:"4px 10px 6px",display:"flex",gap:5,flexWrap:"wrap"}}>{QUICK.map((q,i)=><button key={i} onClick={()=>setInput(q)} style={{background:C.accentLt,color:C.accent,border:"1px solid #bfdbfe",borderRadius:18,padding:"3px 10px",fontSize:11,fontWeight:600,cursor:"pointer"}}>{q}</button>)}</div>}
+      <div style={{padding:"9px 11px",borderTop:"1px solid #dde3ed",display:"flex",gap:7,flexShrink:0}}>
+        <input value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&!e.shiftKey&&send()} placeholder="Ask about planning..." style={{...inp({fontSize:12,minHeight:40})}}/>
+        <button onClick={send} disabled={!input.trim()||loading} style={{...btn(input.trim()&&!loading?C.accent:"#94a3b8","#fff",{padding:"9px 13px",minHeight:40})}}>➤</button>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FIREBASE
+// ─────────────────────────────────────────────────────────────────────────────
+const FB_CONFIG={
+  apiKey:"AIzaSyCIW9TMlbuAVp8h5T9KXsF91HIgSCKH8yA",
+  authDomain:"plan-power26.firebaseapp.com",
+  databaseURL:"https://plan-power26-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId:"plan-power26",
+  storageBucket:"plan-power26.firebasestorage.app",
+  messagingSenderId:"376679127275",
+  appId:"1:376679127275:web:64d83d05db831584e306ae"
+};
+let _db=null;
+function getDB(){
+  if(_db)return _db;
+  if(!window.firebase)throw new Error("Firebase not loaded");
+  if(!firebase.apps.length)firebase.initializeApp(FB_CONFIG);
+  _db=firebase.firestore();
+  return _db;
+}
+
+const ADMIN_USER={id:"admin",username:"admin",password:"gls@2024",role:"admin",name:"Master Admin",company:"GLS Polyfilms"};
+
+async function fbRegister({name,phone,company,password,facePhoto}){
+  const db=getDB();
+  const cleanPhone=phone.replace(/\D/g,"");
+  const ex=await db.collection("pp_users").where("phone","==",cleanPhone).get();
+  if(!ex.empty)throw new Error("This phone number is already registered.");
+  const doc={name:name.trim(),phone:cleanPhone,company:company.trim(),
+    password,facePhoto:facePhoto||null,role:"user",active:true,
+    registeredAt:new Date().toISOString(),trialStart:new Date().toISOString(),lastLogin:null};
+  await db.collection("pp_users").add(doc);
+}
+
+async function fbLogin(phone,password){
+  const db=getDB();
+  const cleanPhone=phone.replace(/\D/g,"");
+  const snap=await db.collection("pp_users")
+    .where("phone","==",cleanPhone).where("password","==",password).get();
+  if(snap.empty)throw new Error("Incorrect phone number or password.");
+  const docRef=snap.docs[0];
+  const d=docRef.data();
+  if(!d.active)throw new Error("Your account is deactivated. Contact admin.");
+  const daysLeft=Math.max(0,30-Math.floor((Date.now()-new Date(d.trialStart))/(1000*60*60*24)));
+  if(daysLeft===0)throw new Error("Your 30-day trial has expired. Contact admin.");
+  await docRef.ref.update({lastLogin:new Date().toISOString()});
+  return{id:docRef.id,...d,daysLeft};
+}
+
+async function fbGetAllUsers(){
+  const db=getDB();
+  try{
+    const snap=await db.collection("pp_users").orderBy("registeredAt","desc").get();
+    return snap.docs.map(d=>({id:d.id,...d.data()}));
+  }catch{
+    const snap=await db.collection("pp_users").get();
+    return snap.docs.map(d=>({id:d.id,...d.data()}))
+      .sort((a,b)=>new Date(b.registeredAt)-new Date(a.registeredAt));
+  }
+}
+
+async function fbDeleteUser(id){await getDB().collection("pp_users").doc(id).delete();}
+async function fbSetActive(id,active){await getDB().collection("pp_users").doc(id).update({active});}
+async function fbExtendTrial(id){
+  await getDB().collection("pp_users").doc(id).update({trialStart:new Date().toISOString()});
+}
+
+function trialDaysLeft(trialStart){
+  return Math.max(0,30-Math.floor((Date.now()-new Date(trialStart))/(1000*60*60*24)));
+}
+function fmtDate(iso){
+  if(!iso)return"—";
+  const d=new Date(iso);
+  return`${String(d.getDate()).padStart(2,"0")}/${String(d.getMonth()+1).padStart(2,"0")}/${d.getFullYear()}`;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// REGISTER SCREEN
+// ─────────────────────────────────────────────────────────────────────────────
+function RegisterScreen({onDone}){
+  const [step,setStep]=useState(1); // 1=details 2=face 3=done
+  const [form,setForm]=useState({name:"",phone:"",company:"",password:"",confirm:""});
+  const [facePhoto,setFacePhoto]=useState(null);
+  const [camOn,setCamOn]=useState(false);
+  const [err,setErr]=useState("");
+  const [loading,setLoading]=useState(false);
+  const videoRef=useRef();const canvasRef=useRef();
+  const upd=(k,v)=>setForm(f=>({...f,[k]:v}));
+
+  const startCam=async()=>{
+    setErr("");
+    try{
+      const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:"user",width:320,height:320},audio:false});
+      videoRef.current.srcObject=stream;setCamOn(true);
+    }catch{setErr("Camera access denied. Please allow camera permission.");}
+  };
+  const stopCam=()=>{videoRef.current?.srcObject?.getTracks().forEach(t=>t.stop());setCamOn(false);};
+  const snap=()=>{
+    const c=canvasRef.current,v=videoRef.current;
+    c.width=260;c.height=260;
+    c.getContext("2d").drawImage(v,0,0,260,260);
+    setFacePhoto(c.toDataURL("image/jpeg",0.7));
+    stopCam();
+  };
+  useEffect(()=>()=>stopCam(),[]);
+
+  const submit=async()=>{
+    if(!facePhoto){setErr("Face photo is required to register.");return;}
+    setLoading(true);setErr("");
+    try{
+      await fbRegister({...form,facePhoto});
+      setStep(3);
+    }catch(e){setErr(e.message);}
+    setLoading(false);
+  };
+
+  if(step===3)return(
+    <div style={{textAlign:"center",padding:"10px 0 6px"}}>
+      <div style={{fontSize:56,marginBottom:12}}>🎉</div>
+      <div style={{fontSize:20,fontWeight:800,color:C.navy,marginBottom:6}}>Registration Complete!</div>
+      <div style={{fontSize:13,color:C.textMd,marginBottom:4,lineHeight:1.6}}>Your <strong>30-day free trial</strong> has started.<br/>Login with your phone number and password.</div>
+      <button onClick={onDone} style={{...btn(C.navy,"#fff",{padding:"11px 30px",fontSize:14,marginTop:16})}}>Go to Login →</button>
+    </div>
+  );
+
+  const STEPS=["Your Details","Face Photo","Done"];
+  return(
+    <div>
+      <div style={{display:"flex",marginBottom:20,borderRadius:10,overflow:"hidden",border:`1px solid ${C.border}`}}>
+        {STEPS.map((s,i)=>(
+          <div key={s} style={{flex:1,padding:"8px 4px",textAlign:"center",fontSize:11,fontWeight:700,
+            background:step===i+1?C.navy:step>i+1?"#15803d":"#f8fafc",
+            color:step>=i+1?"#fff":C.textLt,
+            borderRight:i<2?`1px solid ${C.border}`:undefined}}>
+            {step>i+1?"✓ ":""}{s}
+          </div>
+        ))}
+      </div>
+
+      {step===1&&(
+        <div>
+          {[{l:"Full Name",k:"name",ph:"Your full name",t:"text"},
+            {l:"Phone Number",k:"phone",ph:"10-digit mobile number",t:"tel"},
+            {l:"Company / Organisation",k:"company",ph:"Company name",t:"text"},
+            {l:"Password",k:"password",ph:"Min 6 characters",t:"password"},
+            {l:"Confirm Password",k:"confirm",ph:"Re-enter password",t:"password"},
+          ].map(f=>(
+            <div key={f.k} style={{marginBottom:11}}>
+              <label style={lbl}>{f.l}</label>
+              <input type={f.t} value={form[f.k]} onChange={e=>upd(f.k,e.target.value)}
+                placeholder={f.ph} style={inp()}/>
+            </div>
+          ))}
+          {err&&<ErrBox msg={err}/>}
+          <button onClick={()=>{
+            if(!form.name.trim()||!form.phone.trim()||!form.company.trim()||!form.password){setErr("All fields are required.");return;}
+            if(form.phone.replace(/\D/g,"").length<10){setErr("Enter a valid 10-digit phone number.");return;}
+            if(form.password.length<6){setErr("Password must be at least 6 characters.");return;}
+            if(form.password!==form.confirm){setErr("Passwords do not match.");return;}
+            setErr("");setStep(2);
+          }} style={{...btn(C.navy,"#fff",{width:"100%",padding:"12px",fontSize:14,marginTop:4})}}>
+            Next: Take Face Photo →
+          </button>
+        </div>
+      )}
+
+      {step===2&&(
+        <div style={{textAlign:"center"}}>
+          <p style={{fontSize:13,color:C.textMd,marginBottom:14,lineHeight:1.5}}>Take a clear selfie. This helps admin verify your identity.</p>
+          <div style={{position:"relative",width:200,height:200,borderRadius:100,margin:"0 auto 14px",overflow:"hidden",
+            border:`3px solid ${facePhoto?"#15803d":C.border}`,background:"#f0f4f8",flexShrink:0}}>
+            <video ref={videoRef} autoPlay playsInline muted style={{width:200,height:200,objectFit:"cover",display:camOn?"block":"none"}}/>
+            <canvas ref={canvasRef} style={{display:"none"}}/>
+            {facePhoto&&<img src={facePhoto} style={{width:200,height:200,objectFit:"cover"}} alt="face"/>}
+            {!camOn&&!facePhoto&&<div style={{position:"absolute",inset:0,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",color:C.textLt}}>
+              <div style={{fontSize:44}}>📷</div><div style={{fontSize:12,marginTop:6}}>Camera preview</div>
+            </div>}
+          </div>
+          {!facePhoto&&!camOn&&<button onClick={startCam} style={{...btn(C.navy,"#fff",{padding:"10px 24px"})}}>📷 Open Camera</button>}
+          {camOn&&<div style={{display:"flex",gap:8,justifyContent:"center"}}>
+            <button onClick={snap} style={{...btn("#15803d","#fff",{padding:"10px 22px"})}}>📸 Take Photo</button>
+            <button onClick={stopCam} style={{...btn("#94a3b8","#fff",{padding:"10px 14px"})}}>✕</button>
+          </div>}
+          {facePhoto&&<div>
+            <div style={{color:"#15803d",fontWeight:700,marginBottom:12}}>✓ Photo captured!</div>
+            <div style={{display:"flex",gap:8,justifyContent:"center",flexWrap:"wrap"}}>
+              <button onClick={()=>{setFacePhoto(null);setTimeout(startCam,100);}} style={{...btn("#f1f5f9",C.textMd,{border:`1px solid ${C.border}`})}}>↺ Retake</button>
+              <button onClick={submit} disabled={loading} style={{...btn(C.navy,"#fff",{padding:"10px 22px"})}}>
+                {loading?<><Spin size={16}/>Registering...</>:"✓ Complete Registration"}
+              </button>
+            </div>
+          </div>}
+          {err&&<ErrBox msg={err}/>}
+          <button onClick={()=>setStep(1)} style={{background:"none",border:"none",color:C.textMd,cursor:"pointer",fontSize:13,marginTop:12,display:"block",margin:"14px auto 0"}}>← Back to Details</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ADMIN PANEL — Users + Settings
+// ─────────────────────────────────────────────────────────────────────────────
+function AdminPanel({cfg,setCfg,onClose}){
+  const [aTab,setATab]=useState("users");
+  const [users,setUsers]=useState([]);
+  const [loadingU,setLoadingU]=useState(false);
+  const [uErr,setUErr]=useState("");
+  const [selUser,setSelUser]=useState(null);
+  const [search,setSearch]=useState("");
+  const [lc,setLc]=useState({...cfg});
+  const [saved,setSaved]=useState(false);
+
+  const loadUsers=async()=>{
+    setLoadingU(true);setUErr("");
+    try{setUsers(await fbGetAllUsers());}
+    catch(e){setUErr("Failed to load: "+e.message);}
+    setLoadingU(false);
+  };
+  useEffect(()=>{if(aTab==="users")loadUsers();},[aTab]);
+
+  const doDelete=async(id,name)=>{
+    if(!confirm(`Delete user "${name}"? Cannot be undone.`))return;
+    await fbDeleteUser(id);
+    setUsers(u=>u.filter(x=>x.id!==id));
+    if(selUser?.id===id)setSelUser(null);
+  };
+  const doToggle=async(id,cur)=>{
+    await fbSetActive(id,!cur);
+    setUsers(u=>u.map(x=>x.id===id?{...x,active:!cur}:x));
+    if(selUser?.id===id)setSelUser(s=>({...s,active:!cur}));
+  };
+  const doExtend=async(id)=>{
+    await fbExtendTrial(id);
+    const ts=new Date().toISOString();
+    setUsers(u=>u.map(x=>x.id===id?{...x,trialStart:ts}:x));
+    if(selUser?.id===id)setSelUser(s=>({...s,trialStart:ts}));
+  };
+
+  const filt=users.filter(u=>{
+    const q=search.toLowerCase();
+    return!q||u.name?.toLowerCase().includes(q)||u.phone?.includes(q)||u.company?.toLowerCase().includes(q);
+  });
+
+  const upd=(k,v)=>setLc(c=>({...c,[k]:v}));
+  const save=()=>{setCfg(lc);setSaved(true);setTimeout(()=>setSaved(false),2200);};
+  const F=({label,k,type,full})=>(
+    <div style={{gridColumn:full?"1/-1":"auto"}}>
+      <label style={lbl}>{label}</label>
+      <input type={type||"number"} value={lc[k]||""} onChange={e=>upd(k,type==="text"?e.target.value:Number(e.target.value))} style={inp()}/>
+    </div>
+  );
+
+  const statColors={navy:C.navy,green:"#15803d",amber:"#92400e",red:C.red};
+  const stats=[
+    {l:"Total",v:users.length,c:"navy"},
+    {l:"Active",v:users.filter(u=>u.active).length,c:"green"},
+    {l:"Expiring",v:users.filter(u=>trialDaysLeft(u.trialStart)<=7&&u.active).length,c:"amber"},
+    {l:"Expired",v:users.filter(u=>trialDaysLeft(u.trialStart)===0).length,c:"red"},
+  ];
+
+  return(
+    <div style={{position:"fixed",inset:0,zIndex:400,background:"rgba(10,20,45,.62)",display:"flex",alignItems:"center",justifyContent:"center",padding:12}}>
+      <div style={{background:"#fff",borderRadius:18,width:"min(960px,100%)",maxHeight:"94vh",display:"flex",flexDirection:"column",boxShadow:"0 24px 72px rgba(0,0,0,.38)",overflow:"hidden"}}>
+
+        {/* Header */}
+        <div style={{background:C.navy,padding:"13px 20px",display:"flex",alignItems:"center",gap:12,flexShrink:0}}>
+          <Logo size={30}/>
+          <div>
+            <div style={{color:"#fff",fontWeight:800,fontSize:16}}>Admin Panel</div>
+            <div style={{color:"rgba(255,255,255,.35)",fontSize:11}}>Plan Power Management Console</div>
+          </div>
+          <div style={{marginLeft:"auto",display:"flex",gap:8,alignItems:"center"}}>
+            <div style={{background:"rgba(251,191,36,.15)",border:"1px solid rgba(251,191,36,.3)",borderRadius:8,padding:"4px 12px",color:"#fbbf24",fontSize:13,fontWeight:700}}>
+              {users.length} Registered
+            </div>
+            <button onClick={onClose} style={{...btn("rgba(255,255,255,.1)","rgba(255,255,255,.65)",{border:"1px solid rgba(255,255,255,.15)",padding:"7px 14px"})}}>✕ Close</button>
+          </div>
+        </div>
+
+        {/* Sub-tabs */}
+        <div style={{display:"flex",borderBottom:`2px solid ${C.border}`,background:"#f8fafc",flexShrink:0}}>
+          {[{id:"users",icon:"👥",lbl:"Users"},{id:"settings",icon:"⚙",lbl:"Settings"}].map(t=>(
+            <button key={t.id} onClick={()=>setATab(t.id)} style={{background:"transparent",border:"none",
+              borderBottom:aTab===t.id?`3px solid ${C.navy}`:"3px solid transparent",
+              padding:"11px 22px",fontSize:13,fontWeight:700,cursor:"pointer",
+              color:aTab===t.id?C.navy:C.textMd,display:"flex",alignItems:"center",gap:6,marginBottom:-2,fontFamily:"inherit"}}>
+              {t.icon} {t.lbl}
+            </button>
+          ))}
+        </div>
+
+        {/* Body */}
+        <div style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"column"}}>
+
+          {/* ── USERS TAB ── */}
+          {aTab==="users"&&(
+            <div style={{flex:1,display:"flex",overflow:"hidden"}}>
+
+              {/* Left: list */}
+              <div style={{width:selUser?360:600,maxWidth:"100%",display:"flex",flexDirection:"column",borderRight:selUser?`1px solid ${C.border}`:undefined,flexShrink:0}}>
+
+                {/* Stats bar */}
+                <div style={{display:"flex",gap:0,borderBottom:`1px solid ${C.border}`,background:"#f8fafc",flexShrink:0}}>
+                  {stats.map(s=>(
+                    <div key={s.l} style={{flex:1,padding:"10px 8px",textAlign:"center",borderRight:`1px solid ${C.border}`}}>
+                      <div style={{fontSize:22,fontWeight:800,color:statColors[s.c]}}>{s.v}</div>
+                      <div style={{fontSize:10,color:C.textLt,fontWeight:700,textTransform:"uppercase"}}>{s.l}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Search + refresh */}
+                <div style={{padding:"10px 12px",borderBottom:`1px solid ${C.border}`,display:"flex",gap:7,flexShrink:0}}>
+                  <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search name, phone, company…"
+                    style={{...inp({fontSize:12,minHeight:34,flex:1})}}/>
+                  <button onClick={loadUsers} style={{...btn("#eff6ff",C.accent,{padding:"6px 10px",minHeight:34,fontSize:14,border:`1px solid #bfdbfe`})}}>↻</button>
+                </div>
+
+                {loadingU&&<div style={{padding:32,textAlign:"center",color:C.textMd}}><Spin color={C.accent} size={28}/><div style={{marginTop:10,fontSize:13}}>Loading users…</div></div>}
+                {uErr&&<div style={{margin:12,padding:"10px 14px",background:C.redLt,border:`1px solid ${C.redBd}`,borderRadius:9,color:C.red,fontSize:13}}>{uErr}</div>}
+
+                {!loadingU&&!uErr&&filt.length===0&&(
+                  <div style={{padding:40,textAlign:"center",color:C.textMd}}>
+                    <div style={{fontSize:44,marginBottom:10}}>👥</div>
+                    <div style={{fontWeight:700}}>{search?"No users match search":"No users registered yet"}</div>
+                    <div style={{fontSize:12,marginTop:6,color:C.textLt}}>Users appear here after they register</div>
+                  </div>
+                )}
+
+                {/* User rows */}
+                <div style={{flex:1,overflowY:"auto"}}>
+                  {filt.map((u,i)=>{
+                    const days=trialDaysLeft(u.trialStart);
+                    const isSel=selUser?.id===u.id;
+                    return(
+                      <div key={u.id} onClick={()=>setSelUser(isSel?null:u)}
+                        style={{padding:"11px 14px",cursor:"pointer",borderBottom:`1px solid ${C.border}`,
+                          background:isSel?"#eff6ff":i%2?"#fafbfd":"#fff",
+                          display:"flex",gap:11,alignItems:"center"}}>
+                        {/* Face photo */}
+                        <div style={{width:50,height:50,borderRadius:25,overflow:"hidden",flexShrink:0,
+                          border:`2.5px solid ${u.active?"#86efac":"#fca5a5"}`,background:"#e2e8f0"}}>
+                          {u.facePhoto
+                            ?<img src={u.facePhoto} style={{width:50,height:50,objectFit:"cover"}} alt={u.name}/>
+                            :<div style={{width:50,height:50,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,color:C.textLt}}>👤</div>}
+                        </div>
+                        {/* Info */}
+                        <div style={{flex:1,minWidth:0}}>
+                          <div style={{fontWeight:700,fontSize:14,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u.name}</div>
+                          <div style={{fontSize:12,color:C.textMd,marginTop:1}}>📱 {u.phone}</div>
+                          <div style={{fontSize:12,color:C.textMd}}>🏢 {u.company}</div>
+                        </div>
+                        {/* Badges */}
+                        <div style={{display:"flex",flexDirection:"column",gap:4,alignItems:"flex-end",flexShrink:0}}>
+                          <span style={{background:u.active?"#f0fdf4":C.redLt,color:u.active?"#15803d":C.red,
+                            border:`1px solid ${u.active?"#86efac":C.redBd}`,
+                            padding:"2px 9px",borderRadius:18,fontSize:10,fontWeight:700}}>
+                            {u.active?"✓ Active":"✗ Off"}
+                          </span>
+                          <span style={{background:days>7?C.amberLt:days>0?"#fff7ed":C.redLt,
+                            color:days>7?C.amber:days>0?"#c2410c":C.red,
+                            border:`1px solid ${days>7?C.amberBd:days>0?"#fdba74":C.redBd}`,
+                            padding:"2px 9px",borderRadius:18,fontSize:10,fontWeight:700}}>
+                            {days===0?"Expired":`${days}d left`}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Right: detail panel */}
+              {selUser&&(
+                <div style={{flex:1,overflowY:"auto",padding:20,minWidth:0}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:18}}>
+                    <div style={{fontWeight:800,fontSize:16,color:C.navy}}>User Details</div>
+                    <button onClick={()=>setSelUser(null)} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",color:C.textMd,lineHeight:1}}>✕</button>
+                  </div>
+
+                  {/* Big face photo */}
+                  <div style={{textAlign:"center",marginBottom:18}}>
+                    <div style={{width:130,height:130,borderRadius:65,overflow:"hidden",margin:"0 auto 12px",
+                      border:`4px solid ${selUser.active?"#86efac":C.redBd}`,
+                      boxShadow:"0 4px 24px rgba(0,0,0,.14)"}}>
+                      {selUser.facePhoto
+                        ?<img src={selUser.facePhoto} style={{width:130,height:130,objectFit:"cover"}} alt={selUser.name}/>
+                        :<div style={{width:130,height:130,display:"flex",alignItems:"center",justifyContent:"center",fontSize:46,background:"#e2e8f0",color:C.textLt}}>👤</div>}
+                    </div>
+                    <div style={{fontSize:19,fontWeight:800,color:C.navy}}>{selUser.name}</div>
+                    <div style={{fontSize:13,color:C.textMd,marginTop:2}}>{selUser.company}</div>
+                    <div style={{display:"flex",gap:7,justifyContent:"center",marginTop:9,flexWrap:"wrap"}}>
+                      <span style={{background:selUser.active?"#f0fdf4":C.redLt,color:selUser.active?"#15803d":C.red,
+                        border:`1px solid ${selUser.active?"#86efac":C.redBd}`,padding:"4px 14px",borderRadius:18,fontSize:12,fontWeight:700}}>
+                        {selUser.active?"✓ Active":"✗ Deactivated"}
+                      </span>
+                      {(()=>{const d=trialDaysLeft(selUser.trialStart);return(
+                        <span style={{background:d>7?C.amberLt:d>0?"#fff7ed":C.redLt,
+                          color:d>7?C.amber:d>0?"#c2410c":C.red,
+                          border:`1px solid ${d>7?C.amberBd:d>0?"#fdba74":C.redBd}`,
+                          padding:"4px 14px",borderRadius:18,fontSize:12,fontWeight:700}}>
+                          {d===0?"Trial Expired":`${d} days trial left`}
+                        </span>
+                      );})()}
+                    </div>
+                  </div>
+
+                  {/* Info rows */}
+                  <div style={{...card({padding:14,marginBottom:14})}}>
+                    {[
+                      {l:"Phone",v:selUser.phone},
+                      {l:"Company",v:selUser.company},
+                      {l:"Registered",v:fmtDate(selUser.registeredAt)},
+                      {l:"Last Login",v:fmtDate(selUser.lastLogin)},
+                      {l:"Trial Start",v:fmtDate(selUser.trialStart)},
+                      {l:"Trial Expires",v:(()=>{const d=new Date(selUser.trialStart);d.setDate(d.getDate()+30);return fmtDate(d.toISOString());})()},
+                    ].map(r=>(
+                      <div key={r.l} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:`1px solid ${C.border}`}}>
+                        <span style={{fontSize:12,color:C.textMd,fontWeight:700}}>{r.l}</span>
+                        <span style={{fontSize:13,fontWeight:600,color:C.text}}>{r.v}</span>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Action buttons */}
+                  <div style={{display:"flex",flexDirection:"column",gap:9}}>
+                    <button onClick={()=>doExtend(selUser.id)}
+                      style={{...btn("#eff6ff",C.accent,{border:`1px solid #bfdbfe`,fontSize:13,padding:"10px 16px"})}}>
+                      🔄 Extend Trial +30 Days
+                    </button>
+                    <button onClick={()=>doToggle(selUser.id,selUser.active)}
+                      style={{...btn(selUser.active?C.amberLt:"#f0fdf4",selUser.active?C.amber:"#15803d",
+                        {border:`1px solid ${selUser.active?C.amberBd:"#86efac"}`,fontSize:13,padding:"10px 16px"})}}>
+                      {selUser.active?"⏸ Deactivate User":"▶ Activate User"}
+                    </button>
+                    <button onClick={()=>doDelete(selUser.id,selUser.name)}
+                      style={{...btn(C.redLt,C.red,{border:`1px solid ${C.redBd}`,fontSize:13,padding:"10px 16px"})}}>
+                      🗑 Delete User
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── SETTINGS TAB ── */}
+          {aTab==="settings"&&(
+            <div style={{flex:1,overflowY:"auto",padding:20}}>
+              {[
+                {title:"Company",fields:[{l:"Company Name",k:"companyName",t:"text",full:true},{l:"Dept Name",k:"deptName",t:"text",full:true},{l:"Next Plan No",k:"nextPlanNo",t:"text"}]},
+                {title:"Boat Life",fields:[{l:"Boat Target (m/set)",k:"boatTarget"},{l:"Max Runs 2.2 OD",k:"boatCap22"},{l:"Max Runs 2.5 OD",k:"boatCap25"},{l:"Max Runs 2.8 OD",k:"boatCap28"}]},
+                {title:"Trim & Slitting",fields:[{l:"Trim Max mm",k:"trimMax"},{l:"Side Roll Trigger",k:"trimSide"},{l:"Min Trim 2.2 OD",k:"trimMinOD22"},{l:"Min Trim 2.5/2.8",k:"trimMinOD25"},{l:"Preferred Jumbo mm",k:"jumboPref"},{l:"Plan Threshold kg",k:"planThresh"}]},
+              ].map(sec=>(
+                <div key={sec.title} style={{marginBottom:22}}>
+                  <div style={{fontWeight:800,color:C.navy,fontSize:13,marginBottom:10,paddingBottom:8,borderBottom:"2px solid #e2e8f0"}}>{sec.title}</div>
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(180px,1fr))",gap:12}}>
+                    {sec.fields.map(f=><F key={f.k} label={f.l} k={f.k} type={f.t} full={f.full}/>)}
+                  </div>
+                </div>
+              ))}
+              <div style={{display:"flex",gap:10,alignItems:"center",paddingTop:8}}>
+                {saved&&<span style={{color:"#15803d",fontWeight:700}}>✓ Saved!</span>}
+                <button onClick={()=>setLc({...DEFAULT_CONFIG})} style={{...btn("#f1f5f9","#64748b",{fontSize:12})}}>Reset</button>
+                <button onClick={save} style={{...btn(C.accent,"#fff",{marginLeft:"auto"})}}>💾 Save Settings</button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// HELPER: Error box
+// ─────────────────────────────────────────────────────────────────────────────
+function ErrBox({msg}){
+  return<div style={{background:C.redLt,border:`1px solid ${C.redBd}`,color:C.red,borderRadius:9,padding:"9px 13px",fontSize:13,fontWeight:600,marginTop:8,marginBottom:4}}>⚠ {msg}</div>;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LOGIN SCREEN
+// ─────────────────────────────────────────────────────────────────────────────
+function LoginScreen({onLogin}){
+  const [tab,setTab]=useState("login");
+  const [phone,setPhone]=useState("");
+  const [password,setPassword]=useState("");
+  const [showPw,setShowPw]=useState(false);
+  const [err,setErr]=useState("");
+  const [loading,setLoading]=useState(false);
+
+  const doLogin=async()=>{
+    if(!phone.trim()||!password){setErr("Enter phone number and password.");return;}
+    setErr("");setLoading(true);
+    await new Promise(r=>setTimeout(r,400));
+    try{
+      if(phone.trim().toLowerCase()==="admin"&&password===ADMIN_USER.password){
+        onLogin(ADMIN_USER);return;
+      }
+      const user=await fbLogin(phone,password);
+      onLogin(user);
+    }catch(e){setErr(e.message);}
+    setLoading(false);
+  };
+
+  return(
+    <div style={{minHeight:"100vh",background:"linear-gradient(145deg,#1a305c 0%,#0f1e3a 55%,#162544 100%)",
+      display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:20,position:"relative",overflow:"hidden"}}>
+      <style>{CSS}</style>
+      {[1,2,3,4,5].map(i=><div key={i} style={{position:"absolute",borderRadius:"50%",
+        border:"1px solid rgba(251,191,36,0.05)",width:i*140,height:i*140,
+        top:"50%",left:"50%",transform:"translate(-50%,-50%)",pointerEvents:"none"}}/>)}
+
+      {/* Logo + title */}
+      <div style={{display:"flex",flexDirection:"column",alignItems:"center",marginBottom:26}}>
+        <div style={{marginBottom:12,filter:"drop-shadow(0 8px 28px rgba(251,191,36,.45))"}}>
+          <Logo size={92}/>
+        </div>
+        <h1 style={{fontSize:30,fontWeight:800,color:"#fff",letterSpacing:.5,margin:0}}>PLAN POWER</h1>
+        <div style={{fontSize:12,color:"rgba(255,255,255,.38)",marginTop:4,letterSpacing:.8}}>PRODUCTION PLANNING · MET DEPT</div>
+      </div>
+
+      {/* Card */}
+      <div style={{background:"#fff",borderRadius:20,width:"min(440px,100%)",
+        boxShadow:"0 28px 70px rgba(0,0,0,.42)",overflow:"hidden"}}>
+        {/* Gold accent top */}
+        <div style={{height:4,background:"linear-gradient(90deg,#b45309,#fbbf24,#fde68a,#fbbf24,#b45309)"}}/>
+        {/* Tabs */}
+        <div style={{display:"flex",borderBottom:`2px solid ${C.border}`}}>
+          {[{id:"login",lbl:"🔐 Sign In"},{id:"register",lbl:"📝 Register Free"}].map(t=>(
+            <button key={t.id} onClick={()=>{setTab(t.id);setErr("");}} style={{flex:1,padding:"13px 8px",
+              background:tab===t.id?"#fff":"#f8fafc",border:"none",cursor:"pointer",
+              fontWeight:700,fontSize:13,color:tab===t.id?C.navy:C.textMd,
+              borderBottom:tab===t.id?`3px solid ${C.navy}`:"3px solid transparent",
+              marginBottom:-2,fontFamily:"inherit"}}>
+              {t.lbl}
+            </button>
+          ))}
+        </div>
+
+        <div style={{padding:"22px 24px 26px"}}>
+          {tab==="login"&&(
+            <div style={{animation:"fadeIn .22s ease"}}>
+              <p style={{fontSize:13,color:C.textMd,marginBottom:18,textAlign:"center"}}>Sign in with your registered phone number</p>
+              <div style={{marginBottom:12}}>
+                <label style={lbl}>Phone Number</label>
+                <input type="tel" value={phone} onChange={e=>{setPhone(e.target.value);setErr("");}}
+                  onKeyDown={e=>e.key==="Enter"&&doLogin()}
+                  placeholder="Registered phone number"
+                  autoCapitalize="none" autoComplete="tel" style={inp()}/>
+                <div style={{fontSize:11,color:C.textLt,marginTop:3}}>Admin: type "admin"</div>
+              </div>
+              <div style={{marginBottom:14,position:"relative"}}>
+                <label style={lbl}>Password</label>
+                <input type={showPw?"text":"password"} value={password}
+                  onChange={e=>{setPassword(e.target.value);setErr("");}}
+                  onKeyDown={e=>e.key==="Enter"&&doLogin()}
+                  placeholder="Your password" style={{...inp(),paddingRight:44}}/>
+                <button onClick={()=>setShowPw(s=>!s)} style={{position:"absolute",right:11,bottom:9,
+                  background:"none",border:"none",cursor:"pointer",fontSize:16,color:C.textLt,padding:4,lineHeight:1}}>
+                  {showPw?"🙈":"👁️"}
+                </button>
+              </div>
+              {err&&<ErrBox msg={err}/>}
+              <button onClick={doLogin} disabled={loading}
+                style={{...btn(!loading?C.navy:"#94a3b8","#fff",{width:"100%",padding:"13px",fontSize:15,marginTop:6})}}>
+                {loading?<><Spin size={16}/>Signing in…</>:"Sign In →"}
+              </button>
+              <div style={{textAlign:"center",marginTop:14,fontSize:13,color:C.textMd}}>
+                No account?{" "}
+                <button onClick={()=>setTab("register")} style={{background:"none",border:"none",
+                  color:C.accent,fontWeight:700,cursor:"pointer",fontSize:13,fontFamily:"inherit"}}>
+                  Register free →
+                </button>
+              </div>
+            </div>
+          )}
+          {tab==="register"&&(
+            <div style={{animation:"fadeIn .22s ease"}}>
+              <RegisterScreen onDone={()=>{setTab("login");setPhone("");setPassword("");}}/>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div style={{marginTop:14,fontSize:12,color:"rgba(255,255,255,.2)",textAlign:"center"}}>
+        Plan Power · 30-day free trial · No credit card needed
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// UPLOAD ZONE
+// ─────────────────────────────────────────────────────────────────────────────
+function UploadZone({label,sub,color,loaded,rows,busy,onFile,disabled}){
+  const ref=useRef();
+  return(
+    <div className={`upload-zone${loaded?" loaded":""}`}
+      onClick={()=>!disabled&&ref.current?.click()}
+      style={{cursor:disabled?"not-allowed":"pointer",borderColor:busy?"#93c5fd":undefined,background:busy?"#eff6ff":undefined}}>
+      <input ref={ref} type="file" accept=".xlsx,.xls" style={{display:"none"}} onChange={e=>e.target.files[0]&&onFile(e.target.files[0])}/>
+      <div style={{fontSize:28,marginBottom:6}}>{loaded?"✅":busy?"⏳":"📁"}</div>
+      <div style={{fontWeight:800,color,fontSize:15}}>{label}</div>
+      <div style={{fontSize:12,color:"#4b5a6e",marginTop:3}}>{sub}</div>
+      {loaded&&<div style={{marginTop:7,fontWeight:700,color:"#15803d",fontSize:13}}>{rows} rows loaded</div>}
+      {busy&&<div style={{marginTop:7,color:C.accent,fontSize:13}}>Reading…</div>}
+      {!loaded&&!busy&&<div style={{marginTop:7,fontSize:12,color:"#94a3b8"}}>Click to upload Excel</div>}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MAIN APP
+// ─────────────────────────────────────────────────────────────────────────────
+function App(){
+  const [user,setUser]=useState(null);
+  const [cfg,setCfg]=useState({...DEFAULT_CONFIG});
+  const [tab,setTab]=useState("upload");
+  const [data,setData]=useState({pen:[],mj:[],fgjm:[],bare:[]});
+  const [busy,setBusy]=useState("");
+  const [analysis,setAnalysis]=useState(null);
+  const [micron,setMicron]=useState("all");
+  const [selected,setSelected]=useState(new Set());
+  const [planRows,setPlanRows]=useState([newPlanRow()]);
+  const [showSug,setShowSug]=useState(false);
+  const [metPlan,setMetPlan]=useState([]);
+  const [metView,setMetView]=useState("M-1");
+  const [expandedSet,setExpanded]=useState({});
+  const [showAdmin,setShowAdmin]=useState(false);
+  const [showChat,setShowChat]=useState(false);
+  const [installable,setInstallable]=useState(false);
+  const [deferredPrompt,setDP]=useState(null);
+  const [toast,setToast]=useState("");
+  const toastTimer=useRef(null);
+
+  useEffect(()=>{
+    const s=document.getElementById("pp-splash");
+    if(s){s.classList.add("fade");setTimeout(()=>{s.style.display="none";},650);}
+    window.addEventListener("beforeinstallprompt",e=>{e.preventDefault();setDP(e);setInstallable(true);});
+    window.addEventListener("appinstalled",()=>{setInstallable(false);showToast("Plan Power installed! ✓");});
+  },[]);
+
+  const showToast=msg=>{setToast(msg);clearTimeout(toastTimer.current);toastTimer.current=setTimeout(()=>setToast(""),3200);};
+  const logout=()=>{setUser(null);setData({pen:[],mj:[],fgjm:[],bare:[]});setAnalysis(null);setMetPlan([]);setTab("upload");showToast("Signed out");};
+  const installApp=async()=>{if(!deferredPrompt)return;deferredPrompt.prompt();const{outcome}=await deferredPrompt.userChoice;setDP(null);setInstallable(false);if(outcome==="accepted")showToast("Installing…");};
+  const allLoaded=Object.values(data).every(d=>d.length>0);
+
+  const upload=async(k,file)=>{
+    if(user?.role==="viewer"){showToast("View-only account");return;}
+    setBusy(k);
+    try{setData(d=>({...d,[k]:[]}));const parsed=await readXL(file);setData(d=>({...d,[k]:parsed}));showToast(`${k.toUpperCase()}: ${parsed.length} rows loaded`);}
+    catch(e){alert("Read error: "+e.message);}
+    setBusy("");
+  };
+
+  const analyze=useCallback(()=>{
+    const pend=data.pen.filter(r=>r.Material&&toInt(r["Pending Rolls"])>0);
+    const results=pend.map(order=>{
+      const oMat=String(order.Material).trim(),oW=toInt(order.Width),oL=toInt(order.Length),op=parseMat(oMat),minT=op.od==="22"?cfg.trimMinOD22:cfg.trimMinOD25;
+      const fg=data.fgjm.find(x=>x.Batch&&canFill(x.Material,oMat)&&Math.abs(toInt(x.Width)-oW)<=5);
+      if(fg)return{order,source:"FGJM",ref:fg};
+      const mj=data.mj.find(x=>x.Batch&&canFill(String(x.Material).replace(/^3SF/,"3FG"),oMat)&&toInt(x.Width)>=oW+minT&&toInt(x.Length)>=oL);
+      if(mj)return{order,source:"MJ",ref:mj};
+      const bare=data.bare.find(x=>x.Batch&&Math.abs(toFloat(x.Thickness)-(op.thick||0))<0.5&&toInt(x.Width)>=1910);
+      if(bare)return{order,source:"BARE",ref:bare};
+      return{order,source:"NONE",ref:null};
+    });
+    const micMap={};
+    pend.forEach(o=>{const th=toFloat(o.Thickness);if(!th)return;if(!micMap[th])micMap[th]={kg:0,rolls:0};micMap[th].kg+=toFloat(o["Pend. Prod."]);micMap[th].rolls+=toInt(o["Pending Rolls"]);});
+    setAnalysis({results,micMap,totalKg:Object.values(micMap).reduce((s,v)=>s+v.kg,0),pend});
+    setTab("analysis");showToast(`${results.length} orders analyzed`);
+  },[data,cfg]);
+
+  const genMetPlan=useCallback(()=>{
+    const plan=buildMetPlan(data.bare,data.pen,cfg);
+    setMetPlan(plan);setTab("metseq");
+    const exp={};plan.forEach(r=>{const k=r.machine+"_"+r.setNo;exp[k]=true;});setExpanded(exp);
+    showToast(`${plan.length} runs generated`);
+  },[data,cfg]);
+
+  const toggleSel=key=>setSelected(s=>{const n=new Set(s);n.has(key)?n.delete(key):n.add(key);return n;});
+  const updPRow=(id,k,v)=>setPlanRows(p=>p.map(r=>r.id===id?{...r,[k]:v}:r));
+  const updArm=(id,i,v)=>setPlanRows(p=>p.map(r=>{if(r.id!==id)return r;const a=[...r.arms];a[i]=v;return{...r,arms:a};}));
+  const calcRS=row=>row.arms.filter(Boolean).map(Number).reduce((a,b)=>a+b,0)+toInt(row.trim);
+  const calcNR=row=>{const rs=calcRS(row);if(!rs||!row.jLength||!row.slit)return"-";return((toInt(row.slit)*toInt(row.sets))/toInt(row.jLength)).toFixed(3);};
+  const mHint=w=>Object.entries(M_RANGE).filter(([,r])=>w>=r[0]&&w<=r[1]).map(([k])=>k);
+  const updMet=(id,k,v)=>setMetPlan(p=>p.map(r=>r.id===id?{...r,[k]:v}:r));
+  const moveMet=(id,dir)=>setMetPlan(p=>{const i=p.findIndex(r=>r.id===id);if((dir<0&&i===0)||(dir>0&&i===p.length-1))return p;const n=[...p];[n[i],n[i+dir]]=[n[i+dir],n[i]];return n;});
+
+  const filteredOrders=useMemo(()=>(analysis?.pend||[]).filter(o=>micron==="all"||toFloat(o.Thickness)===parseFloat(micron)),[analysis,micron]);
+  const byS=useMemo(()=>{const b={FGJM:0,MJ:0,BARE:0,NONE:0};(analysis?.results||[]).forEach(r=>b[r.source]++);return b;},[analysis]);
+  const suggestions=useMemo(()=>{
+    if(!analysis||!selected.size)return[];
+    const ws=[...new Set(filteredOrders.filter(o=>selected.has(getKey(o))).map(o=>toInt(o.Width)).filter(Boolean))];
+    const res=[],tryC=combo=>{const sum=combo.reduce((a,b)=>a+b,0);for(let t=cfg.trimMinOD22;t<=cfg.trimMax;t++){const j=sum+t;if(j>=1910&&j<=3630)res.push({arms:[...combo],jumbo:j,trim:t});}};
+    ws.forEach(a=>tryC([a]));
+    for(let i=0;i<ws.length;i++)for(let j=i;j<ws.length;j++){tryC([ws[i],ws[j]]);for(let k=j;k<ws.length;k++)tryC([ws[i],ws[j],ws[k]]);}
+    return[...new Map(res.map(r=>[r.arms.slice().sort().join(",")+"-"+r.jumbo,r])).values()].sort((a,b)=>Math.abs(a.jumbo-cfg.jumboPref)-Math.abs(b.jumbo-cfg.jumboPref)).slice(0,7);
+  },[analysis,selected,filteredOrders,cfg]);
+
+  const shownMet=metPlan.filter(r=>r.machine===metView);
+  const boatSets=useMemo(()=>{const s={};shownMet.forEach(r=>{if(!s[r.setNo])s[r.setNo]={no:r.setNo,rows:[],maxMeters:0};s[r.setNo].rows.push(r);s[r.setNo].maxMeters=r.cumMeters;});return Object.values(s).sort((a,b)=>a.no-b.no);},[shownMet]);
+
+  const TH={background:"#eef1f7",color:"#4b5a6e",padding:"8px 11px",textAlign:"left",fontSize:11,fontWeight:700,letterSpacing:.4,textTransform:"uppercase",borderBottom:"2px solid #dde3ed",whiteSpace:"nowrap"};
+  const TD={padding:"8px 11px",fontSize:13,color:C.text,borderBottom:"1px solid #dde3ed",verticalAlign:"middle"};
+  const srcBadge=src=>({background:SRC[src].badge,color:SRC[src].text,border:`1px solid ${SRC[src].border}`,padding:"3px 10px",borderRadius:18,fontSize:11,fontWeight:700,display:"inline-block"});
+
+  const TABS=[
+    {id:"upload",label:"① Upload"},
+    {id:"analysis",label:"② Analysis",dis:!analysis},
+    {id:"plan",label:"③ MET/F/04",dis:!analysis},
+    {id:"metseq",label:"④ Met Seq",dis:!metPlan.length},
+  ];
+
+  if(!user)return <LoginScreen onLogin={u=>{setUser(u);showToast(`Welcome, ${u.name}! 👋`);}}/>;
+
+  return(
+    <>
+      <style>{CSS}</style>
+      {showAdmin&&user.role==="admin"&&<AdminPanel cfg={cfg} setCfg={c=>{setCfg(c);showToast("Settings saved!");}} onClose={()=>setShowAdmin(false)}/>}
+      {showChat&&<ChatBot analysis={analysis} metPlan={metPlan} cfg={cfg} onClose={()=>setShowChat(false)}/>}
+      <div style={{minHeight:"100vh",background:"#f0f4f8",display:"flex",flexDirection:"column"}}>
+
+        {/* ── HEADER ── */}
+        <div style={{background:C.navy,padding:"0 16px",display:"flex",alignItems:"stretch",
+          boxShadow:"0 2px 14px rgba(26,48,92,.25)",position:"sticky",top:0,zIndex:100,flexWrap:"wrap"}}>
+          <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px 10px 0",
+            marginRight:8,borderRight:"1px solid rgba(255,255,255,.1)"}}>
+            <Logo size={30}/>
+            <div>
+              <div style={{fontSize:14,fontWeight:800,color:"#fff"}}>PLAN POWER</div>
+              <div style={{fontSize:10,color:"rgba(255,255,255,.35)"}}>MET DEPT · PLANNING</div>
+            </div>
+          </div>
+          {TABS.map(t=>(
+            <button key={t.id} disabled={t.dis} onClick={()=>!t.dis&&setTab(t.id)}
+              style={{background:"transparent",border:"none",
+                borderBottom:tab===t.id?"3px solid #fbbf24":"3px solid transparent",
+                cursor:t.dis?"not-allowed":"pointer",padding:"0 12px",
+                fontSize:12,fontWeight:700,
+                color:tab===t.id?"#fff":t.dis?"rgba(255,255,255,.2)":"rgba(255,255,255,.55)",
+                display:"flex",alignItems:"center",minHeight:52}}>
+              {t.label}
+            </button>
+          ))}
+          <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:8,padding:"0 0 0 8px",borderLeft:"1px solid rgba(255,255,255,.1)"}}>
+            {installable&&<button onClick={installApp} style={{background:"#fbbf24",color:"#1a1a00",border:"none",borderRadius:9,padding:"6px 12px",cursor:"pointer",fontSize:12,fontWeight:800,animation:"ppPulse 2s infinite"}}>⬇ Install</button>}
+            {user.daysLeft!==undefined&&(
+              <div style={{background:"rgba(251,191,36,.12)",border:"1px solid rgba(251,191,36,.25)",borderRadius:7,padding:"4px 9px",textAlign:"center"}}>
+                <div style={{fontSize:12,fontWeight:800,color:"#fbbf24"}}>{user.daysLeft}d</div>
+                <div style={{fontSize:9,color:"rgba(255,255,255,.3)"}}>TRIAL</div>
+              </div>
+            )}
+            <div style={{textAlign:"right"}}>
+              <div style={{fontSize:12,fontWeight:700,color:"#fff"}}>{user.name}</div>
+              <div style={{fontSize:10,color:"rgba(255,255,255,.38)"}}>{user.company||user.role}</div>
+            </div>
+            {user.role==="admin"&&<button onClick={()=>setShowAdmin(true)} style={{...btn("rgba(251,191,36,.15)","#fbbf24",{border:"1px solid rgba(251,191,36,.3)",padding:"6px 10px",minHeight:0,fontSize:12})}}>👑 Admin</button>}
+            <button onClick={logout} style={{...btn("rgba(255,255,255,.08)","rgba(255,255,255,.6)",{border:"1px solid rgba(255,255,255,.1)",padding:"6px 10px",minHeight:0,fontSize:12})}}>↩ Out</button>
+          </div>
+        </div>
+
+        <div style={{flex:1,padding:"18px 20px",maxWidth:1400,margin:"0 auto",width:"100%"}}>
+
+          {/* ── UPLOAD TAB ── */}
+          {tab==="upload"&&(
+            <div>
+              <h1 style={{fontSize:22,fontWeight:800,color:C.navy,marginBottom:4}}>Upload SAP Files</h1>
+              <p style={{fontSize:14,color:"#4b5a6e",marginBottom:18}}>Upload all four Excel exports to begin planning</p>
+
+              {/* PWA Install Banner — always visible */}
+              {(()=>{
+                const isIOS=/iphone|ipad|ipod/i.test(navigator.userAgent);
+                const isAndroid=/android/i.test(navigator.userAgent);
+                return(
+                  <div style={{marginBottom:20,background:"linear-gradient(135deg,#0f1e3a 0%,#1a305c 50%,#0f2847 100%)",
+                    borderRadius:16,overflow:"hidden",boxShadow:"0 6px 32px rgba(26,48,92,.35)",border:"1px solid rgba(251,191,36,.25)"}}>
+                    <div style={{background:"linear-gradient(90deg,#b45309,#fbbf24,#fde68a,#fbbf24,#b45309)",height:3}}/>
+                    <div style={{padding:"15px 18px",display:"flex",alignItems:"center",gap:13,flexWrap:"wrap"}}>
+                      <div style={{flexShrink:0,filter:"drop-shadow(0 4px 12px rgba(251,191,36,.45))"}}><Logo size={46}/></div>
+                      <div style={{flex:1,minWidth:150}}>
+                        <div style={{color:"#fff",fontWeight:800,fontSize:14,marginBottom:3}}>Install Plan Power on your device</div>
+                        <div style={{color:"rgba(255,255,255,.5)",fontSize:12,lineHeight:1.5}}>
+                          {installable?"One tap to install — works offline like a native app":
+                           isIOS?`Tap Share ↑ then "Add to Home Screen" in Safari`:
+                           isAndroid?"Open in Chrome → menu → Add to Home Screen":
+                           "In Chrome/Edge → click ⊕ in address bar to install"}
+                        </div>
+                      </div>
+                      {installable
+                        ?<button onClick={installApp} style={{flexShrink:0,background:"linear-gradient(135deg,#fde68a,#fbbf24)",color:"#1a0a00",border:"none",borderRadius:12,padding:"11px 22px",cursor:"pointer",fontSize:14,fontWeight:900,boxShadow:"0 4px 16px rgba(251,191,36,.5)",animation:"ppPulse 2s infinite"}}>⬇ Install App</button>
+                        :<div style={{flexShrink:0,background:"rgba(251,191,36,.1)",border:"1px solid rgba(251,191,36,.3)",borderRadius:10,padding:"8px 14px",textAlign:"center"}}>
+                          <div style={{fontSize:20,marginBottom:2}}>{isIOS?"📱":isAndroid?"📲":"💻"}</div>
+                          <div style={{fontSize:11,color:"#fbbf24",fontWeight:700}}>{isIOS?"Use Safari":"Use Chrome"}</div>
+                        </div>
+                      }
+                    </div>
+                    <div style={{borderTop:"1px solid rgba(251,191,36,.12)",padding:"7px 18px",display:"flex",gap:16,flexWrap:"wrap"}}>
+                      {[["⚡","Works offline"],["🔔","Fast launch"],["📱","Home screen"],["🖥","Desktop app"]].map(([ico,txt])=>(
+                        <div key={txt} style={{display:"flex",alignItems:"center",gap:5,fontSize:11,color:"rgba(255,255,255,.38)",fontWeight:600}}><span>{ico}</span><span>{txt}</span></div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:14,marginBottom:20}}>
+                {[{k:"pen",label:"PEN",sub:"Pending Orders",color:"#dc2626"},
+                  {k:"mj",label:"MJ",sub:"Met Jumbos",color:"#16a34a"},
+                  {k:"fgjm",label:"FGJM",sub:"Finished Rolls",color:"#1d4ed8"},
+                  {k:"bare",label:"BARE",sub:"Bare Film",color:"#7c3aed"}
+                ].map(f=>(
+                  <UploadZone key={f.k} label={f.label} sub={f.sub} color={f.color}
+                    loaded={data[f.k].length>0} rows={data[f.k].length} busy={busy===f.k}
+                    onFile={file=>upload(f.k,file)} disabled={user.role==="viewer"}/>
+                ))}
+              </div>
+              {allLoaded&&user.role!=="viewer"&&(
+                <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
+                  <button onClick={analyze} style={{...btn(C.accent,"#fff",{padding:"12px 26px",fontSize:15})}}>◈ Fulfillment Analysis →</button>
+                  <button onClick={genMetPlan} style={{...btn("#6d28d9","#fff",{padding:"12px 26px",fontSize:15})}}>⚙ Met Sequence →</button>
+                </div>
+              )}
+              {!allLoaded&&<div style={{marginTop:4,padding:"11px 16px",background:"#fffbeb",border:"1px solid #fbbf24",borderRadius:10}}>
+                <span style={{fontWeight:700,color:"#92400e",fontSize:13}}>ℹ Upload all 4 files to unlock analysis</span>
+              </div>}
+            </div>
+          )}
+
+          {/* ── ANALYSIS TAB ── */}
+          {tab==="analysis"&&analysis&&(
+            <div style={{animation:"fadeIn .3s ease"}}>
+              <h1 style={{fontSize:22,fontWeight:800,color:C.navy,marginBottom:4}}>Fulfillment Analysis</h1>
+              <p style={{fontSize:14,color:"#4b5a6e",marginBottom:18}}>FGJM → MJ → BARE priority · {analysis.pend.length} orders</p>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(130px,1fr))",gap:10,marginBottom:16}}>
+                {[{l:"Total",v:analysis.results.length,sub:(analysis.totalKg/1000).toFixed(1)+" MT",c:C.navy,bg:"#eff6ff"},
+                  {l:"FGJM",v:byS.FGJM,sub:"Direct",c:"#15803d",bg:"#f0fdf4"},
+                  {l:"MJ Slit",v:byS.MJ,sub:"Slit needed",c:"#1e40af",bg:"#eff6ff"},
+                  {l:"BARE Met",v:byS.BARE,sub:"Metallize",c:"#92400e",bg:"#fef9c3"},
+                  {l:"No Stock",v:byS.NONE,sub:"Procure",c:C.red,bg:"#fef2f2"}
+                ].map((s,i)=>(
+                  <div key={i} style={{background:s.bg,borderRadius:11,padding:"14px 10px",textAlign:"center"}}>
+                    <div style={{fontSize:28,fontWeight:800,color:s.c}}>{s.v}</div>
+                    <div style={{fontSize:12,color:"#4b5a6e",fontWeight:700}}>{s.l}</div>
+                    <div style={{fontSize:11,color:"#94a3b8"}}>{s.sub}</div>
+                  </div>
+                ))}
+              </div>
+              <div style={{...card({background:"#f0f7ff",borderColor:"#bfdbfe",marginBottom:14})}}>
+                <div style={{fontWeight:800,color:"#1e40af",marginBottom:10}}>Micron Breakdown</div>
+                <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"center"}}>
+                  {Object.entries(analysis.micMap).sort((a,b)=>+a[0]-+b[0]).map(([th,v])=>(
+                    <div key={th} style={{background:"#fff",borderRadius:9,padding:"10px 16px",border:"1px solid #dde3ed",textAlign:"center"}}>
+                      <div style={{fontSize:20,fontWeight:800,color:C.accent}}>{th}µ</div>
+                      <div style={{fontSize:13,fontWeight:700}}>{(v.kg/1000).toFixed(2)} MT</div>
+                      <div style={{fontSize:11,color:"#4b5a6e"}}>{v.rolls} rolls</div>
+                    </div>
+                  ))}
+                  <div style={{padding:"10px 14px",borderRadius:9,fontSize:13,fontWeight:700,
+                    background:analysis.totalKg>cfg.planThresh?"#fef2f2":"#f0fdf4",
+                    border:`2px solid ${analysis.totalKg>cfg.planThresh?"#fca5a5":"#86efac"}`,
+                    color:analysis.totalKg>cfg.planThresh?C.red:"#15803d"}}>
+                    {analysis.totalKg>cfg.planThresh?"Plan separately":"Single plan OK"}
+                  </div>
+                </div>
+              </div>
+              <div style={card()}>
+                <div style={{overflowX:"auto",borderRadius:9,border:"1px solid #dde3ed"}}>
+                  <table style={{width:"100%",background:"#fff",minWidth:620}}>
+                    <thead><tr>{["µ","Material","Customer","Width","Length","Rolls","Source","Ref Batch"].map(h=><th key={h} style={TH}>{h}</th>)}</tr></thead>
+                    <tbody>{analysis.results.map((r,i)=>(
+                      <tr key={i} className="pprow" style={{background:i%2?"#f7f9fc":"#fff"}}>
+                        <td style={{...TD,fontWeight:800,color:C.accent}}>{r.order.Thickness}µ</td>
+                        <td style={{...TD,fontFamily:"monospace",fontSize:11,color:"#3730a3"}}>{r.order.Material}</td>
+                        <td style={{...TD,fontSize:12}}>{String(r.order["Consignee Name"]||"").slice(0,22)}</td>
+                        <td style={{...TD,fontWeight:700}}>{r.order.Width}</td>
+                        <td style={TD}>{r.order.Length}</td>
+                        <td style={{...TD,fontWeight:800,color:C.red}}>{r.order["Pending Rolls"]}</td>
+                        <td style={TD}><span style={srcBadge(r.source)}>{SRC[r.source].label}</span></td>
+                        <td style={{...TD,fontFamily:"monospace",fontSize:11,color:"#94a3b8"}}>{r.ref?.Batch||"—"}</td>
+                      </tr>
+                    ))}</tbody>
+                  </table>
+                </div>
+                {user.role!=="viewer"&&<div style={{marginTop:12,display:"flex",gap:10}}>
+                  <button onClick={()=>setTab("plan")} style={{...btn(C.accent,"#fff",{padding:"9px 20px"})}}>Build MET/F/04 →</button>
+                  <button onClick={genMetPlan} style={{...btn("#6d28d9","#fff",{padding:"9px 20px"})}}>⚙ Met Sequence →</button>
+                </div>}
+              </div>
+            </div>
+          )}
+
+          {/* ── PLAN BUILDER ── */}
+          {tab==="plan"&&analysis&&(
+            <div style={{animation:"fadeIn .3s ease"}}>
+              <h1 style={{fontSize:22,fontWeight:800,color:C.navy,marginBottom:4}}>Plan Builder — MET/F/04</h1>
+              <p style={{fontSize:14,color:"#4b5a6e",marginBottom:18}}>Select orders · Build slitting rows</p>
+              <div style={{display:"grid",gridTemplateColumns:"300px 1fr",gap:16,flexWrap:"wrap"}}>
+                <div style={{...card({padding:14})}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+                    <div style={{fontWeight:800,color:C.navy}}>{filteredOrders.length} Orders</div>
+                    <div style={{display:"flex",gap:5}}>
+                      <button onClick={()=>setSelected(new Set(filteredOrders.map(getKey)))} style={{...btn(C.accent,"#fff",{padding:"3px 8px",fontSize:11,minHeight:0})}}>All</button>
+                      <button onClick={()=>setSelected(new Set())} style={{...btn("#94a3b8","#fff",{padding:"3px 8px",fontSize:11,minHeight:0})}}>None</button>
+                    </div>
+                  </div>
+                  <div style={{overflowY:"auto",maxHeight:480}}>
+                    {filteredOrders.map((o,i)=>{const key=getKey(o),isSel=selected.has(key),src=analysis.results.find(r=>getKey(r.order)===key)?.source||"NONE";return(
+                      <div key={i} onClick={()=>user.role!=="viewer"&&toggleSel(key)}
+                        style={{padding:"9px 10px",borderRadius:9,cursor:user.role!=="viewer"?"pointer":"default",marginBottom:5,
+                          background:isSel?"#eff6ff":"#fff",border:`1.5px solid ${isSel?C.accent:"#dde3ed"}`}}>
+                        <div style={{display:"flex",alignItems:"center",gap:8}}>
+                          <input type="checkbox" checked={isSel} readOnly style={{accentColor:C.accent,width:15,height:15,flexShrink:0}}/>
+                          <div style={{flex:1,minWidth:0}}>
+                            <div style={{fontFamily:"monospace",fontSize:11,color:"#3730a3",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{o.Material}</div>
+                            <div style={{fontSize:12,color:"#4b5a6e"}}>{String(o["Consignee Name"]||"").slice(0,22)}</div>
+                          </div>
+                          <div style={{textAlign:"right",flexShrink:0}}>
+                            <div style={{fontWeight:800,fontSize:13}}>{o.Width}mm</div>
+                            <span style={srcBadge(src)}>{SRC[src].label}</span>
+                          </div>
+                        </div>
+                      </div>
+                    );})}
+                  </div>
+                </div>
+                <div>
+                  {selected.size>0&&suggestions.length>0&&(
+                    <div style={{...card({borderColor:"#bfdbfe",background:"#f0f7ff",marginBottom:12})}}>
+                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:showSug?10:0}}>
+                        <div style={{fontSize:13,fontWeight:800,color:"#1e40af"}}>💡 Jumbo Combinations</div>
+                        <button onClick={()=>setShowSug(s=>!s)} style={{...btn("#dbeafe","#1e40af",{padding:"4px 12px",fontSize:11,minHeight:0})}}>{showSug?"Hide":"Show "+suggestions.length}</button>
+                      </div>
+                      {showSug&&<div style={{display:"flex",gap:9,flexWrap:"wrap",marginTop:10}}>
+                        {suggestions.map((s,i)=>{const mh=mHint(s.jumbo);return(
+                          <div key={i} style={{background:"#fff",border:"1px solid #dde3ed",borderRadius:9,padding:"10px 14px",fontSize:13}}>
+                            <div style={{fontWeight:800,color:C.accent,fontSize:17}}>{s.jumbo}mm</div>
+                            <div>Arms: {s.arms.join("+")}mm</div>
+                            <div style={{color:"#4b5a6e"}}>Trim: {s.trim}mm</div>
+                            <div style={{color:mh.length?C.green:C.red,fontSize:11,fontWeight:700}}>{mh.length?mh.join("/"):"No machine"}</div>
+                            <button onClick={()=>{const r=planRows[planRows.length-1];if(r){const a=["","","","",""];s.arms.forEach((v,i)=>a[i]=String(v));setPlanRows(p=>p.map(x=>x.id===r.id?{...x,arms:a,trim:s.trim}:x));}}} style={{...btn("#eff6ff",C.accent,{padding:"3px 10px",fontSize:11,marginTop:6,minHeight:0})}}>Apply</button>
+                          </div>
+                        );})}
+                      </div>}
+                    </div>
+                  )}
+                  <div style={card()}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+                      <div style={{fontWeight:800,color:C.navy,fontSize:16}}>🔪 Slitting Rows</div>
+                      {user.role!=="viewer"&&<button onClick={()=>setPlanRows(r=>[...r,newPlanRow()])} style={{...btn(C.accent,"#fff",{padding:"7px 14px"})}}>+ Add Row</button>}
+                    </div>
+                    {planRows.map((row,ri)=>{
+                      const rs=calcRS(row),mh=mHint(rs),mOK=mh.includes(row.machine),tBad=toInt(row.trim)>cfg.trimMax;
+                      return(
+                        <div key={row.id} style={{border:`2px solid ${mOK&&rs?"#93c5fd":"#dde3ed"}`,borderRadius:10,padding:12,marginBottom:12,background:ri%2?"#fafbfd":"#fff"}}>
+                          <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"flex-end"}}>
+                            <div style={{background:C.navy,color:"#fff",borderRadius:6,padding:"5px 10px",fontSize:13,fontWeight:800,alignSelf:"flex-end"}}>{String(ri+1).padStart(2,"0")}</div>
+                            <div><label style={lbl}>Machine</label><select value={row.machine} disabled={user.role==="viewer"} onChange={e=>updPRow(row.id,"machine",e.target.value)} style={{...inp({width:76,fontWeight:800})}}><option>M-1</option><option>M-2</option></select></div>
+                            <div style={{flex:"1 1 150px"}}><label style={lbl}>Material</label><input value={row.material} readOnly={user.role==="viewer"} onChange={e=>updPRow(row.id,"material",e.target.value)} style={{...inp({fontFamily:"monospace",fontSize:12})}}/></div>
+                            <div><label style={lbl}>Jumbo L(m)</label><input type="number" value={row.jLength} readOnly={user.role==="viewer"} onChange={e=>updPRow(row.id,"jLength",e.target.value)} style={{...inp({width:84})}}/></div>
+                            <div><label style={lbl}>Slit L</label><select value={row.slit} disabled={user.role==="viewer"} onChange={e=>updPRow(row.id,"slit",e.target.value)} style={{...inp({width:90})}}><option value={24000}>24,000</option><option value={36000}>36,000</option><option value={18000}>18,000</option></select></div>
+                            <div><label style={lbl}>Sets</label><input type="number" min={1} value={row.sets} readOnly={user.role==="viewer"} onChange={e=>updPRow(row.id,"sets",e.target.value)} style={{...inp({width:54,textAlign:"center",fontWeight:800})}}/></div>
+                            <div><label style={lbl}>Trim mm</label><input type="number" value={row.trim} readOnly={user.role==="viewer"} onChange={e=>updPRow(row.id,"trim",e.target.value)} style={{...inp({width:70,textAlign:"center",borderColor:tBad?"#fbbf24":"#dde3ed",background:tBad?"#fef9c3":"#f7f9fc"})}}/></div>
+                            {user.role!=="viewer"&&<button onClick={()=>setPlanRows(p=>p.filter(r=>r.id!==row.id))} style={{...btn("#fef2f2",C.red,{border:"1px solid #fca5a5",padding:"8px 10px",fontSize:14,minHeight:0,alignSelf:"flex-end"})}}>✕</button>}
+                          </div>
+                          <div style={{display:"flex",gap:8,marginTop:10,alignItems:"flex-end",flexWrap:"wrap",paddingTop:10,borderTop:"1px solid #dde3ed"}}>
+                            <span style={{...lbl,marginBottom:8,alignSelf:"flex-end"}}>Arms:</span>
+                            {[0,1,2,3,4].map(i=>(
+                              <div key={i} style={{flex:"1 1 58px"}}><label style={{...lbl,textAlign:"center",marginBottom:2}}>A{i+1}</label><input type="number" value={row.arms[i]} placeholder="-" readOnly={user.role==="viewer"} onChange={e=>updArm(row.id,i,e.target.value)} style={{...inp({textAlign:"center",fontWeight:700,borderColor:row.arms[i]?C.accent:"#dde3ed"})}}/></div>
+                            ))}
+                            <div style={{padding:"9px 14px",borderRadius:9,fontSize:13,background:mOK&&rs?"#eff6ff":rs&&!mOK?"#fef2f2":"#f0f4f8",border:`1.5px solid ${mOK&&rs?"#93c5fd":rs&&!mOK?"#fca5a5":"#dde3ed"}`,flex:"1 1 170px"}}>
+                              <div><b>Jumbo: </b><span style={{fontWeight:800,color:rs?C.accent:"#94a3b8",fontSize:16}}>{rs||"-"}mm</span>{rs>0&&<span style={{marginLeft:8,color:mh.length?C.green:C.red,fontWeight:800,fontSize:11}}>{mh.length?mh.join("/"):"No fit"}</span>}</div>
+                              <div><b>Rolls: </b><span style={{fontWeight:800}}>{calcNR(row)}</span></div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                    <div style={{background:C.navy,borderRadius:9,padding:"11px 16px",marginTop:8,display:"flex",gap:16,alignItems:"center",color:"#fff",flexWrap:"wrap"}}>
+                      <span style={{color:"rgba(255,255,255,.4)",fontSize:11}}>TOTAL ROLLS: </span><span style={{color:"#86efac",fontWeight:800,fontSize:15}}>{planRows.reduce((s,r)=>s+(parseFloat(calcNR(r))||0),0).toFixed(3)}</span>
+                      <span style={{color:"rgba(255,255,255,.4)",fontSize:11}}>SELECTED: </span><span style={{color:"#93c5fd",fontWeight:800}}>{selected.size}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ── MET SEQUENCE ── */}
+          {tab==="metseq"&&(
+            <div style={{animation:"fadeIn .3s ease"}}>
+              <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:18,flexWrap:"wrap"}}>
+                <div><h1 style={{fontSize:22,fontWeight:800,color:C.navy,marginBottom:3}}>Metallization Sequence</h1><p style={{fontSize:14,color:"#4b5a6e"}}>Boat-life optimized · Editable · Re-orderable</p></div>
+                {user.role!=="viewer"&&<button onClick={genMetPlan} style={{...btn(C.gold,"#1c1401",{padding:"9px 18px",marginLeft:"auto"})}}>↻ Re-generate</button>}
+              </div>
+              <div style={{...card({background:"#f5f3ff",borderColor:"#c4b5fd",marginBottom:14,padding:14})}}>
+                <div style={{fontWeight:800,color:"#4c1d95",marginBottom:9}}>Boat Life Rules · Target {fmtNum(cfg.boatTarget)} m/set</div>
+                <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                  {[{l:"First run MUST be 2.2 OD"},{l:`2.2 OD max ${cfg.boatCap22} runs/set`},{l:`2.5 OD max ${cfg.boatCap25} runs/set`},{l:`2.8 OD max ${cfg.boatCap28} runs/set`}].map((r,i)=>(
+                    <div key={i} style={{background:"#fff",border:"1px solid #e9d5ff",borderRadius:8,padding:"7px 12px",fontSize:12,fontWeight:700,color:"#5b21b6"}}>{r.l}</div>
+                  ))}
+                </div>
+              </div>
+              <div style={{display:"flex",gap:0,borderBottom:"2px solid #dde3ed",marginBottom:12}}>
+                {["M-1","M-2"].map(m=>{const mr=metPlan.filter(r=>r.machine===m);return(
+                  <button key={m} onClick={()=>setMetView(m)} style={{background:metView===m?"#fff":"transparent",border:`1px solid ${metView===m?"#dde3ed":"transparent"}`,borderBottom:"none",padding:"10px 22px",fontSize:14,fontWeight:700,cursor:"pointer",color:metView===m?C.navy:"#4b5a6e",borderRadius:"9px 9px 0 0",marginBottom:-2}}>
+                    {m} · {mr.length} runs
+                  </button>
+                );})}
+                {user.role!=="viewer"&&<button onClick={()=>setMetPlan(p=>[...p,{id:uid(),machine:metView,setNo:1,slotNo:p.filter(r=>r.machine===metView).length+1,odType:"22",bareMat:"",batch:"",width:"",length:"",thickness:"",outputMat:"",customers:"",cumMeters:0,notes:""}])} style={{...btn(C.accent,"#fff",{padding:"5px 12px",fontSize:11,marginLeft:"auto",marginBottom:4})}}>+ Run</button>}
+              </div>
+              {boatSets.length===0
+                ?<div style={{...card({textAlign:"center",color:"#4b5a6e",padding:40})}}>No {metView} runs. Upload BARE + PEN and click Met Sequence.</div>
+                :boatSets.map(set=>{
+                  const pct=Math.min(100,(set.maxMeters/cfg.boatTarget)*100),over=set.maxMeters>cfg.boatTarget,vOK=set.rows[0]?.odType==="22",sk=metView+"_"+set.no,isE=expandedSet[sk]!==false;
+                  return(
+                    <div key={set.no} style={{...card({marginBottom:14,borderColor:vOK?"#bfdbfe":"#fca5a5",borderWidth:2})}}>
+                      <div onClick={()=>setExpanded(e=>({...e,[sk]:!isE}))} style={{display:"flex",alignItems:"center",gap:10,marginBottom:isE?12:0,cursor:"pointer",flexWrap:"wrap"}}>
+                        <div style={{background:vOK?C.navy:C.red,color:"#fff",borderRadius:7,padding:"6px 14px",fontWeight:800,fontSize:14}}>Set {set.no}</div>
+                        <div style={{display:"flex",gap:5,flex:1,flexWrap:"wrap"}}>
+                          {set.rows.map(r=>{const os=OD_STYLE[r.odType]||OD_STYLE["??"];return<span key={r.id} style={{background:os.bg,color:os.text,border:`1px solid ${os.border}`,padding:"3px 9px",borderRadius:18,fontSize:11,fontWeight:700}}>{os.label}</span>;})}
+                        </div>
+                        <div style={{textAlign:"right",marginLeft:"auto"}}>
+                          <div style={{fontSize:13,fontWeight:700,color:over?C.red:"#1e40af"}}>{fmtNum(set.maxMeters)} / {fmtNum(cfg.boatTarget)} m</div>
+                          <div style={{fontSize:11,color:"#94a3b8"}}>{set.rows.length} runs</div>
+                        </div>
+                      </div>
+                      {!vOK&&<div style={{background:"#fef2f2",border:"1px solid #fca5a5",color:C.red,padding:"6px 12px",borderRadius:7,fontSize:12,fontWeight:700,marginBottom:isE?12:6}}>⚠ First run is NOT 2.2 OD — boat damage risk!</div>}
+                      {isE&&<>
+                        <div style={{background:"#f1f5f9",borderRadius:4,height:7,marginBottom:12,overflow:"hidden"}}><div style={{height:"100%",width:`${pct}%`,background:over?"#dc2626":pct>90?"#f59e0b":"#22c55e",borderRadius:4}}/></div>
+                        <div style={{overflowX:"auto",borderRadius:9,border:"1px solid #dde3ed"}}>
+                          <table style={{width:"100%",background:"#fff",minWidth:700}}>
+                            <thead><tr>{["Slot","OD","Bare Material","Batch","W(mm)","L(m)","Thick","Output","Cum.m","Notes","⚙"].map(h=><th key={h} style={{...TH,padding:"7px 9px"}}>{h}</th>)}</tr></thead>
+                            <tbody>{set.rows.map((r,ri)=>{const os=OD_STYLE[r.odType]||OD_STYLE["??"],isF=ri===0;return(
+                              <tr key={r.id} className="pprow" style={{background:isF?"#fffbeb":ri%2?"#f7f9fc":"#fff"}}>
+                                <td style={{...TD,fontWeight:800,color:C.navy,textAlign:"center"}}>{isF?"🚩":""}{r.slotNo}</td>
+                                <td style={{...TD,width:80}}><select value={r.odType} disabled={user.role==="viewer"} onChange={e=>updMet(r.id,"odType",e.target.value)} style={{background:os.bg,color:os.text,border:`1px solid ${os.border}`,borderRadius:5,padding:"3px 6px",fontSize:11,fontWeight:700,fontFamily:"inherit"}}><option value="22">2.2 OD</option><option value="25">2.5 OD</option><option value="28">2.8 OD</option></select></td>
+                                {["bareMat","batch","width","length","thickness","outputMat","cumMeters","notes"].map(k=>(
+                                  <td key={k} style={{...TD,padding:"5px 7px"}}><input value={r[k]||""} readOnly={user.role==="viewer"} onChange={e=>updMet(r.id,k,e.target.value)} className="ppec" style={{fontFamily:["bareMat","batch","outputMat"].includes(k)?"monospace":"inherit",fontSize:11}}/></td>
+                                ))}
+                                <td style={{...TD,width:90}}>{user.role!=="viewer"&&<div style={{display:"flex",gap:4}}>
+                                  <button onClick={()=>moveMet(r.id,-1)} style={{...btn("#eff6ff",C.accent,{padding:"3px 7px",fontSize:11,minHeight:0})}}>↑</button>
+                                  <button onClick={()=>moveMet(r.id,1)} style={{...btn("#eff6ff",C.accent,{padding:"3px 7px",fontSize:11,minHeight:0})}}>↓</button>
+                                  <button onClick={()=>setMetPlan(p=>p.filter(x=>x.id!==r.id))} style={{...btn("#fef2f2",C.red,{padding:"3px 7px",fontSize:11,minHeight:0,border:"1px solid #fca5a5"})}}>✕</button>
+                                </div>}</td>
+                              </tr>
+                            );})}
+                            </tbody>
+                          </table>
+                        </div>
+                      </>}
+                    </div>
+                  );
+                })}
+              {boatSets.length>0&&<div style={{background:C.navy,borderRadius:9,padding:"11px 16px",display:"flex",gap:14,alignItems:"center",color:"#fff",flexWrap:"wrap"}}>
+                {[{l:"RUNS",v:shownMet.length},{l:"SETS",v:boatSets.length},{l:"METERS",v:fmtNum(shownMet.reduce((s,r)=>s+toInt(r.length),0))}].map(c=>(
+                  <span key={c.l}><span style={{color:"rgba(255,255,255,.32)",fontSize:11}}>{c.l}: </span><span style={{fontWeight:800}}>{c.v}</span></span>
+                ))}
+              </div>}
+            </div>
+          )}
+
+          <div style={{textAlign:"center",padding:"14px 0 4px",fontSize:11,color:"#94a3b8",borderTop:"1px solid #dde3ed",marginTop:14}}>
+            ⚡ Plan Power · Production Planning SaaS
+          </div>
+        </div>
+
+        {!showChat&&<button className="pp-fab" onClick={()=>setShowChat(true)} title="AI Planning Assistant">⚡</button>}
+        {toast&&<div className="pp-toast">{toast}</div>}
+      </div>
+    </>
+  );
+}
+
+const root = ReactDOM.createRoot(document.getElementById("root"));
+root.render(React.createElement(App));
+</script>
+</body>
+</html>
