@@ -351,133 +351,7 @@ function ChatBot({analysis,metPlan,cfg,onClose}){
         <div ref={endRef}/>
       </div>
       {msgs.length<=1&&<div style={{padding:"4px 10px 6px",display:"flex",gap:5,flexWrap:"wrap"}}>{QUICK.map((q,i)=><button key={i} onClick={()=>setInput(q)} style={{background:C.accentLt,color:C.accent,border:"1px solid #bfdbfe",borderRadius:18,padding:"3px 10px",fontSize:11,fontWeight:600,cursor:"pointer"}}>{q}</button>)}</div>}
-      <div style={{padding:"9px 11px",borderTop:"1px solid #dde3ed",display:"flex",gap:7,flexShrink:0}}>
-        <input value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&!e.shiftKey&&send()} placeholder="Ask about planning..." style={{...inp({fontSize:12,minHeight:40})}}/>
-        <button onClick={send} disabled={!input.trim()||loading} style={{...btn(input.trim()&&!loading?C.accent:"#94a3b8","#fff",{padding:"9px 13px",minHeight:40})}}>➤</button>
-      </div>
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// FIREBASE
-// ─────────────────────────────────────────────────────────────────────────────
-const FB_CONFIG={
-  apiKey:"AIzaSyCIW9TMlbuAVp8h5T9KXsF91HIgSCKH8yA",
-  authDomain:"plan-power26.firebaseapp.com",
-  databaseURL:"https://plan-power26-default-rtdb.asia-southeast1.firebasedatabase.app",
-  projectId:"plan-power26",
-  storageBucket:"plan-power26.firebasestorage.app",
-  messagingSenderId:"376679127275",
-  appId:"1:376679127275:web:64d83d05db831584e306ae"
-};
-let _db=null;
-function getDB(){
-  if(_db)return _db;
-  if(!window.firebase)throw new Error("Firebase not loaded");
-  if(!firebase.apps.length)firebase.initializeApp(FB_CONFIG);
-  _db=firebase.firestore();
-  return _db;
-}
-
-const ADMIN_USER={id:"admin",username:"admin",phone:"8929397949",password:"sunitavks26",role:"admin",name:"Master Admin",company:"Plan Power"};
-
-async function fbRegister({name,phone,company,password,facePhoto}){
-  const db=getDB();
-  const cleanPhone=phone.replace(/\D/g,"");
-  const ex=await db.collection("pp_users").where("phone","==",cleanPhone).get();
-  if(!ex.empty)throw new Error("This phone number is already registered.");
-  const doc={name:name.trim(),phone:cleanPhone,company:company.trim(),
-    password,facePhoto:facePhoto||null,role:"user",active:true,
-    registeredAt:new Date().toISOString(),trialStart:new Date().toISOString(),lastLogin:null};
-  await db.collection("pp_users").add(doc);
-}
-
-async function fbLogin(phone,password){
-  const db=getDB();
-  const cleanPhone=phone.replace(/\D/g,"");
-  const snap=await db.collection("pp_users").where("phone","==",cleanPhone).get();
-  if(snap.empty)throw new Error("Incorrect phone number or password.");
-  const docRef=snap.docs[0];
-  const d=docRef.data();
-  if(d.password!==password)throw new Error("Incorrect phone number or password.");
-  if(!d.active)throw new Error("Your account is deactivated. Contact admin.");
-  const daysLeft=Math.max(0,30-Math.floor((Date.now()-new Date(d.trialStart))/(1000*60*60*24)));
-  if(daysLeft===0)throw new Error("Your 30-day trial has expired. Contact admin.");
-  await docRef.ref.update({lastLogin:new Date().toISOString()});
-  return{id:docRef.id,...d,daysLeft};
-}
-
-async function fbGetAllUsers(){
-  const db=getDB();
-  try{
-    const snap=await db.collection("pp_users").orderBy("registeredAt","desc").get();
-    return snap.docs.map(d=>({id:d.id,...d.data()}));
-  }catch{
-    const snap=await db.collection("pp_users").get();
-    return snap.docs.map(d=>({id:d.id,...d.data()}))
-      .sort((a,b)=>new Date(b.registeredAt)-new Date(a.registeredAt));
-  }
-}
-
-async function fbDeleteUser(id){await getDB().collection("pp_users").doc(id).delete();}
-async function fbSetActive(id,active){await getDB().collection("pp_users").doc(id).update({active});}
-async function fbExtendTrial(id){
-  await getDB().collection("pp_users").doc(id).update({trialStart:new Date().toISOString()});
-}
-
-function trialDaysLeft(trialStart){
-  return Math.max(0,30-Math.floor((Date.now()-new Date(trialStart))/(1000*60*60*24)));
-}
-function fmtDate(iso){
-  if(!iso)return"—";
-  const d=new Date(iso);
-  return`${String(d.getDate()).padStart(2,"0")}/${String(d.getMonth()+1).padStart(2,"0")}/${d.getFullYear()}`;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// REGISTER SCREEN
-// ─────────────────────────────────────────────────────────────────────────────
-function RegisterScreen({onDone}){
-  const [step,setStep]=useState(1); // 1=details 2=face 3=done
-  const [form,setForm]=useState({name:"",phone:"",company:"",password:"",confirm:""});
-  const [facePhoto,setFacePhoto]=useState(null);
-  const [camOn,setCamOn]=useState(false);
-  const [err,setErr]=useState("");
-  const [loading,setLoading]=useState(false);
-  const videoRef=useRef();const canvasRef=useRef();
-  const upd=(k,v)=>setForm(f=>({...f,[k]:v}));
-
-  const startCam=async()=>{
-    setErr("");
-    try{
-      const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:"user",width:320,height:320},audio:false});
-      videoRef.current.srcObject=stream;setCamOn(true);
-    }catch{setErr("Camera access denied. Please allow camera permission.");}
-  };
-  const stopCam=()=>{videoRef.current?.srcObject?.getTracks().forEach(t=>t.stop());setCamOn(false);};
-  const snap=()=>{
-    const c=canvasRef.current,v=videoRef.current;
-    c.width=260;c.height=260;
-    c.getContext("2d").drawImage(v,0,0,260,260);
-    setFacePhoto(c.toDataURL("image/jpeg",0.7));
-    stopCam();
-  };
-  useEffect(()=>()=>stopCam(),[]);
-
-  const submit=async()=>{
-    if(!facePhoto){setErr("Face photo is required to register.");return;}
-    setLoading(true);setErr("");
-    try{
-      await fbRegister({...form,facePhoto});
-      setStep(3);
-    }catch(e){setErr(e.message);}
-    setLoading(false);
-  };
-
-  if(step===3)return(
-    <div style={{textAlign:"center",padding:"10px 0 6px"}}>
-      <div style={{fontSize:56,marginBottom:12}}>🎉</div>
+      
       <div style={{fontSize:20,fontWeight:800,color:C.navy,marginBottom:6}}>Registration Complete!</div>
       <div style={{fontSize:13,color:C.textMd,marginBottom:4,lineHeight:1.6}}>Your <strong>30-day free trial</strong> has started.<br/>Login with your phone number and password.</div>
       <button onClick={onDone} style={{...btn(C.navy,"#fff",{padding:"11px 30px",fontSize:14,marginTop:16})}}>Go to Login →</button>
@@ -843,13 +717,21 @@ function ErrBox({msg}){
 // ─────────────────────────────────────────────────────────────────────────────
 // LOGIN SCREEN
 // ─────────────────────────────────────────────────────────────────────────────
-function LoginScreen({onLogin}){
+function LoginScreen({onLogin, installable, onInstall}){
   const [tab,setTab]=useState("login");
   const [phone,setPhone]=useState("");
   const [password,setPassword]=useState("");
   const [showPw,setShowPw]=useState(false);
   const [err,setErr]=useState("");
   const [loading,setLoading]=useState(false);
+  const [installable,setInstallable]=useState(false);
+  const [dp,setDp]=useState(null);
+  useEffect(()=>{
+    const handler=e=>{e.preventDefault();setDp(e);setInstallable(true);};
+    window.addEventListener("beforeinstallprompt",handler);
+    return()=>window.removeEventListener("beforeinstallprompt",handler);
+  },[]);
+  const installPWA=async()=>{if(!dp)return;dp.prompt();const{outcome}=await dp.userChoice;setDp(null);setInstallable(false);};
 
   const doLogin=async()=>{
     if(!phone.trim()||!password){setErr("Enter phone number and password.");return;}
@@ -910,7 +792,7 @@ function LoginScreen({onLogin}){
                   onKeyDown={e=>e.key==="Enter"&&doLogin()}
                   placeholder="Registered phone number"
                   autoCapitalize="none" autoComplete="tel" style={inp()}/>
-                <div style={{fontSize:11,color:C.textLt,marginTop:3}}>Admin: use phone <b>8929397949</b></div>
+                
               </div>
               <div style={{marginBottom:14,position:"relative"}}>
                 <label style={lbl}>Password</label>
@@ -935,6 +817,11 @@ function LoginScreen({onLogin}){
                   Register free →
                 </button>
               </div>
+              {installable&&(
+                <button onClick={onInstall} style={{width:"100%",marginTop:12,padding:"11px",background:"linear-gradient(135deg,#0f1e3a,#1a305c)",color:"#fbbf24",border:"2px solid rgba(251,191,36,.6)",borderRadius:10,fontWeight:800,fontSize:13,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:8,fontFamily:"inherit"}}>
+                  📲 Install Plan Power App
+                </button>
+              )}
             </div>
           )}
           {tab==="register"&&(
@@ -945,6 +832,11 @@ function LoginScreen({onLogin}){
         </div>
       </div>
 
+      {installable&&(
+        <button onClick={installPWA} style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,width:"100%",marginTop:12,padding:"11px",background:"linear-gradient(135deg,#1a305c,#0f1e3a)",border:"2px solid rgba(251,191,36,.4)",borderRadius:12,cursor:"pointer",color:"#fbbf24",fontWeight:800,fontSize:13,fontFamily:"inherit"}}>
+          <span style={{fontSize:18}}>📲</span> Install Plan Power App
+        </button>
+      )}
       <div style={{marginTop:14,fontSize:12,color:"rgba(255,255,255,.2)",textAlign:"center"}}>
         Plan Power · 30-day free trial · No credit card needed
       </div>
@@ -981,13 +873,13 @@ function UploadZone({label,sub,color,loaded,rows,busy,onFile,disabled}){
 // ─────────────────────────────────────────────────────────────────────────────
 function smartPlan(penData, bareData, mjData, fgjmData, cfg, machineMode, priorities){
   /* ═══════════════════════════════════════════════════════════════
-     GLS MET/F/04 PLANNING ENGINE v3
-     KEY RULE: noOfRoll should be ≥ 1 always
-     Strategy: increase sets / add arm duplicates / raise trim (max 30mm)
+     GLS MET/F/04 PLANNING ENGINE v4
+     TRIM RULE: Fixed per OD type (M22=15, M25=20, M28=25)
+     noOfRoll = sets × slitLen / jumboLen  (trim does NOT affect this)
+     noOfRoll < 1 is CORRECT for small orders (e.g. 1 roll × 24000m / 72000m = 0.333)
   ═══════════════════════════════════════════════════════════════ */
   const M1_MIN=1910, M1_MAX=3290, M2_MIN=2900, M2_MAX=3630;
   const JUMBO_LEN=72000;
-  const MAX_TRIM=30;
 
   function trimForOD(od){ return od==="M28"?25:od==="M25"?20:15; }
   function getKey(o){ return (o.Material||"")+"_"+(o.Width||"")+"_"+(o["Sales Order"]||""); }
@@ -1046,11 +938,8 @@ function smartPlan(penData, bareData, mjData, fgjmData, cfg, machineMode, priori
 
   for(const [gk,grp] of Object.entries(groups)){
     const {micron,od,slitLen}=grp;
-    const BASE_TRIM=trimForOD(od);
+    const TRIM=trimForOD(od);  // FIXED trim — never changes
     const machMax=(machineMode==="M-2")?M2_MAX:(machineMode==="M-1")?M1_MAX:M2_MAX;
-    const machMin=(machineMode==="M-2")?M2_MIN:(machineMode==="M-1")?M1_MIN:M1_MIN;
-    // How many sets needed for noOfRoll ≥ 1
-    const MIN_SETS_FOR_FULL_ROLL=Math.ceil(JUMBO_LEN/(slitLen||24000));
 
     let items=grp.items.filter(i=>i._rem>0).map(i=>({...i}));
     let safety=0;
@@ -1063,70 +952,40 @@ function smartPlan(penData, bareData, mjData, fgjmData, cfg, machineMode, priori
       });
 
       // ── Build arm list ───────────────────────────────────────
-      // Try two trim values: base trim, then up to MAX_TRIM if needed
-      let bestArmList=[], bestTrim=BASE_TRIM, bestSets=0;
+      const armList=[]; let usedW=TRIM;
 
-      for(const tryTrim of [BASE_TRIM, Math.min(MAX_TRIM, BASE_TRIM+5), MAX_TRIM]){
-        const armList=[]; let usedW=tryTrim;
-
-        // Pass 1: distinct orders (most-needed first)
-        const added=new Set();
-        for(const item of remaining){
-          const k2=getKey(item);
-          if(!added.has(k2)&&armList.length<5&&usedW+toFloat(item.Width)<=machMax){
-            armList.push(item); usedW+=toFloat(item.Width); added.add(k2);
-          }
+      // Pass 1: distinct orders (most-pending first)
+      const added=new Set();
+      for(const item of remaining){
+        const k2=getKey(item);
+        if(!added.has(k2)&&armList.length<5&&usedW+toFloat(item.Width)<=machMax){
+          armList.push(item); usedW+=toFloat(item.Width); added.add(k2);
         }
-        if(armList.length===0) break;
+      }
+      if(armList.length===0) break;
 
-        // Pass 2: fill machine width with duplicates
-        let filled=true;
-        while(filled&&armList.length<5){
-          filled=false;
-          const uniq=[...new Set(armList.map(a=>getKey(a)))].map(k2=>armList.find(a=>getKey(a)===k2)).sort((a,b)=>b._rem-a._rem);
-          for(const cand of uniq){
-            const w=toFloat(cand.Width);
-            if(armList.length<5&&usedW+w<=machMax){armList.push(cand);usedW+=w;filled=true;break;}
-          }
-        }
-
-        // Calculate sets
-        const armCounts={};
-        for(const a of armList){const k2=getKey(a);armCounts[k2]=(armCounts[k2]||0)+1;}
-        const uniqArms=Object.keys(armCounts).map(k2=>armList.find(a=>getKey(a)===k2));
-        let sets=Math.min(...uniqArms.map(ua=>Math.floor(ua._rem/armCounts[getKey(ua)])));
-        sets=Math.max(1,sets);
-
-        // Prefer trim that gives noOfRoll ≥ 1 (sets ≥ MIN_SETS_FOR_FULL_ROLL)
-        if(sets>=bestSets||(sets>=MIN_SETS_FOR_FULL_ROLL&&bestSets<MIN_SETS_FOR_FULL_ROLL)){
-          bestArmList=armList; bestTrim=tryTrim; bestSets=sets;
-          if(sets>=MIN_SETS_FOR_FULL_ROLL) break; // good enough, stop trying
+      // Pass 2: fill machine width with duplicates (same order on multiple arms)
+      let filled=true;
+      while(filled&&armList.length<5){
+        filled=false;
+        const uniq=[...new Set(armList.map(a=>getKey(a)))]
+          .map(k2=>armList.find(a=>getKey(a)===k2))
+          .sort((a,b)=>b._rem-a._rem);
+        for(const cand of uniq){
+          const w=toFloat(cand.Width);
+          if(armList.length<5&&usedW+w<=machMax){armList.push(cand);usedW+=w;filled=true;break;}
         }
       }
 
-      if(bestArmList.length===0) break;
-
-      // ── Final sets & deduction ───────────────────────────────
+      // ── Calculate sets ───────────────────────────────────────
       const armCounts={};
-      for(const a of bestArmList){const k2=getKey(a);armCounts[k2]=(armCounts[k2]||0)+1;}
-      const uniqArms=Object.keys(armCounts).map(k2=>bestArmList.find(a=>getKey(a)===k2));
+      for(const a of armList){const k2=getKey(a);armCounts[k2]=(armCounts[k2]||0)+1;}
+      const uniqArms=Object.keys(armCounts).map(k2=>armList.find(a=>getKey(a)===k2));
       let sets=Math.min(...uniqArms.map(ua=>Math.floor(ua._rem/armCounts[getKey(ua)])));
       sets=Math.max(1,sets);
 
-      // If sets < MIN_SETS_FOR_FULL_ROLL AND there's capacity, try adding more arm duplicates to reach it
-      // by checking if increasing sets count is possible (allow partial use of remaining)
-      const setsNeeded=MIN_SETS_FOR_FULL_ROLL;
-      if(sets<setsNeeded){
-        // Can we increase sets? sets is already max possible given current arms. Keep as is.
-      }
-
-      const rollSize=bestArmList.reduce((s,a)=>s+toFloat(a.Width),0)+bestTrim;
-
-      let machine;
-      if(machineMode==="M-1") machine="M-1";
-      else if(machineMode==="M-2") machine="M-2";
-      else machine=rollSize>M1_MAX?"M-2":rollSize>=M1_MIN?"M-1":"M-2";
-
+      const rollSize=armList.reduce((s,a)=>s+toFloat(a.Width),0)+TRIM;
+      const machine=(machineMode==="M-1")?"M-1":(machineMode==="M-2")?"M-2":rollSize>M1_MAX?"M-2":rollSize>=M1_MIN?"M-1":"M-2";
       const bareRoll=findBare(micron,rollSize);
       const jumboLen=bareRoll?toFloat(bareRoll.Length||0):JUMBO_LEN;
       const noOfRoll=fmtRoll(sets*slitLen/(jumboLen||JUMBO_LEN));
@@ -1137,15 +996,15 @@ function smartPlan(penData, bareData, mjData, fgjmData, cfg, machineMode, priori
         if(orig) orig._rem=Math.max(0,orig._rem-cnt*sets);
       }
 
-      const custSet=[...new Set(bestArmList.map(a=>shortCust(a["Consignee Name"])))];
       planRows.push({
         source:"BARE",included:true,machine,
         material:uniqArms[0].Material,
         bare:bareRoll,rollSize,jumboLen,noOfRoll,
-        trim:bestTrim,slitLen,
-        arms:bestArmList.map(a=>toFloat(a.Width)),
+        trim:TRIM,slitLen,
+        arms:armList.map(a=>toFloat(a.Width)),
         sets,metalIO:"I",packMode:"WM",
-        od,micron,customers:custSet.join(" / "),orders:bestArmList
+        od,micron,customers:[...new Set(armList.map(a=>shortCust(a["Consignee Name"])))].join(" / "),
+        orders:armList
       });
 
       items=items.filter(i=>i._rem>0);
@@ -1162,6 +1021,11 @@ function PendencyAnalysis({pen, mj, fgjm, bare, cfg, onMakePlan}){
   const [view,setView]=useState("customer");
   const [sortKey,setSortKey]=useState("rolls");
   const [sortDir,setSortDir]=useState(-1);
+  const [selGroups,setSelGroups]=useState(new Set()); // selected film type keys
+  const toggleGroup=(key)=>setSelGroups(s=>{const n=new Set(s);n.has(key)?n.delete(key):n.add(key);return n;});
+  const allKeys=()=>new Set((filmData||[]).map(f=>f.key));
+  const selAll=()=>setSelGroups(allKeys());
+  const selNone=()=>setSelGroups(new Set());
   const pend=useMemo(()=>pen.filter(r=>r.Material&&(toInt(r["Pending Rolls"])>0||toFloat(r["Pending Rolls"])>0)),[pen]);
 
   const OD_COMPAT={"22":["22","25","28"],"25":["25","28"],"28":["28"]};
@@ -1377,33 +1241,49 @@ function PendencyAnalysis({pen, mj, fgjm, bare, cfg, onMakePlan}){
 
       {/* ── FILM TYPE WISE ── */}
       {view==="filmtype"&&(
-        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))",gap:12}}>
+        <div>
+          <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10,flexWrap:"wrap"}}>
+            <div style={{flex:1,fontSize:12,color:C.textMd,fontWeight:600}}>
+              {selGroups.size===0?"Tip: Click cards to select film types for planning — or leave all unselected to plan everything":`${selGroups.size} film type${selGroups.size>1?"s":""} selected`}
+            </div>
+            <button onClick={(e)=>{e.stopPropagation();selAll();}} style={{...btn(C.navy,"#fff",{padding:"5px 12px",fontSize:11})}}>☑ Select All</button>
+            <button onClick={(e)=>{e.stopPropagation();selNone();}} style={{...btn("#f1f5f9",C.navy,{padding:"5px 12px",fontSize:11,border:"1px solid "+C.border})}}>☐ Clear</button>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))",gap:12}}>
           {filmData.map((f,i)=>{
             const odColors={"22":["#f0fdf4","#15803d","#86efac"],"25":["#eff6ff","#1e40af","#93c5fd"],"28":["#fff7ed","#92400e","#fdba74"]};
             const [bg,tc,bc]=odColors[f.od]||["#f8fafc","#64748b","#cbd5e1"];
+            const isSel=selGroups.has(f.key)||selGroups.size===0;
+            const isChk=selGroups.has(f.key);
             return(
-              <div key={i} style={{...card({padding:16,borderColor:bc,borderWidth:2})}}>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-                  <div>
-                    <span style={{background:bg,color:tc,border:`1px solid ${bc}`,padding:"4px 12px",borderRadius:20,fontWeight:800,fontSize:16}}>{f.thick}µ</span>
-                    <span style={{background:bg,color:tc,border:`1px solid ${bc}`,padding:"4px 12px",borderRadius:20,fontWeight:700,fontSize:13,marginLeft:6}}>{f.od==="22"?"2.2":f.od==="25"?"2.5":"2.8"} OD</span>
+              <div key={i} onClick={()=>toggleGroup(f.key)} style={{...card({padding:16,borderColor:isChk?tc:bc,borderWidth:isChk?3:2,cursor:"pointer",background:isChk?bg:"#fff",boxShadow:isChk?`0 4px 18px ${bc}55`:"none",transition:"all .15s"})}}>
+                {/* Checkbox row */}
+                <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
+                  <div style={{width:22,height:22,borderRadius:6,border:`2px solid ${isChk?tc:C.border}`,background:isChk?tc:"#fff",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,transition:"all .15s"}}>
+                    {isChk&&<span style={{color:"#fff",fontSize:14,fontWeight:900,lineHeight:1}}>✓</span>}
+                  </div>
+                  <div style={{flex:1,display:"flex",alignItems:"center",gap:6}}>
+                    <span style={{background:isChk?tc:bg,color:isChk?"#fff":tc,border:`1px solid ${bc}`,padding:"3px 10px",borderRadius:20,fontWeight:800,fontSize:15,transition:"all .15s"}}>{f.thick}µ</span>
+                    <span style={{background:isChk?tc:bg,color:isChk?"#fff":tc,border:`1px solid ${bc}`,padding:"3px 10px",borderRadius:20,fontWeight:700,fontSize:12,transition:"all .15s"}}>{f.od==="22"?"2.2 OD":f.od==="25"?"2.5 OD":"2.8 OD"}</span>
                   </div>
                   <div style={{textAlign:"right"}}>
-                    <div style={{fontSize:22,fontWeight:800,color:C.red}}>{Math.round(f.rolls)}</div>
-                    <div style={{fontSize:10,color:C.textLt}}>rolls</div>
+                    <div style={{fontSize:20,fontWeight:800,color:isChk?tc:C.red}}>{Math.round(f.rolls)}</div>
+                    <div style={{fontSize:9,color:C.textLt}}>rolls</div>
                   </div>
                 </div>
-                <div style={{display:"flex",justifyContent:"space-between",fontSize:12,color:C.textMd,marginBottom:8}}>
+                <div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:isChk?tc:C.textMd,marginBottom:6}}>
                   <span>{f.orders} orders</span>
                   <span>{(f.kg/1000).toFixed(2)} MT</span>
                   <span>{f.customers.length} customers</span>
                 </div>
-                <div style={{fontSize:11,color:C.textLt}}>
+                <div style={{fontSize:10,color:isChk?tc:C.textLt,marginBottom:isChk?8:0}}>
                   Widths: {f.widths.slice(0,5).join(", ")}{f.widths.length>5?`... +${f.widths.length-5}`:""} mm
                 </div>
+                {isChk&&<div style={{marginTop:6,padding:"4px 10px",background:"rgba(0,0,0,.06)",borderRadius:6,fontSize:10,fontWeight:700,color:tc,textAlign:"center"}}>✓ Selected for planning</div>}
               </div>
             );
           })}
+          </div>
         </div>
       )}
 
@@ -1451,7 +1331,11 @@ function PendencyAnalysis({pen, mj, fgjm, bare, cfg, onMakePlan}){
       {/* Make Plan button at bottom */}
       <div style={{marginTop:18,padding:"14px 18px",background:"linear-gradient(135deg,#0f1e3a,#1a305c)",borderRadius:14,display:"flex",alignItems:"center",gap:16,flexWrap:"wrap",border:"1px solid rgba(251,191,36,.2)"}}>
         <div><div style={{color:"#fff",fontWeight:800,fontSize:14}}>Ready to plan?</div><div style={{color:"rgba(255,255,255,.45)",fontSize:12}}>Generate MET/F/04 plan in 3 machine configurations</div></div>
-        <button onClick={onMakePlan} style={{marginLeft:"auto",...btn("linear-gradient(135deg,#fde68a,#fbbf24)","#1a0a00",{fontWeight:900,padding:"12px 28px",fontSize:14,boxShadow:"0 4px 14px rgba(251,191,36,.4)"})}}>📋 Make MET/F/04 Plan →</button>
+        <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:4}}>
+          {selGroups.size>0&&<div style={{fontSize:11,color:"#fbbf24",fontWeight:700}}>Planning {selGroups.size} selected film type{selGroups.size>1?"s":""} · {[...selGroups].join(", ")}</div>}
+          {selGroups.size===0&&<div style={{fontSize:11,color:"rgba(255,255,255,.5)"}}>No selection → all {filmData.length} film types will be planned</div>}
+          <button onClick={()=>onMakePlan(selGroups.size>0?selGroups:null)} style={{...btn("linear-gradient(135deg,#fde68a,#fbbf24)","#1a0a00",{fontWeight:900,padding:"12px 28px",fontSize:14,boxShadow:"0 4px 14px rgba(251,191,36,.4)"})}}>📋 Make MET/F/04 Plan →</button>
+        </div>
       </div>
     </div>
   );
@@ -1460,7 +1344,7 @@ function PendencyAnalysis({pen, mj, fgjm, bare, cfg, onMakePlan}){
 // ─────────────────────────────────────────────────────────────────────────────
 // PLAN BUILDER — 3 MACHINE MODES + MANUAL PRIORITY
 // ─────────────────────────────────────────────────────────────────────────────
-function PlanBuilderNew({pen, mj, fgjm, bare, cfg, metPlan, setMetPlan, onViewSeq}){
+function PlanBuilderNew({pen, mj, fgjm, bare, cfg, metPlan, setMetPlan, onViewSeq, planFilter}){
   const [mode,setMode]=useState("both");
   const [planRows,setPlanRows]=useState(null);
   const [generating,setGenerating]=useState(false);
@@ -1471,12 +1355,21 @@ function PlanBuilderNew({pen, mj, fgjm, bare, cfg, metPlan, setMetPlan, onViewSe
   const [modalTab,setModalTab]=useState("MET"); // MET | MJ | FGJM
 
   const pend=pen.filter(r=>r.Material&&(toInt(r["Pending Rolls"])>0||toFloat(r["Pending Rolls"])>0));
+  // Apply planFilter: only include orders whose film type key is selected
+  const filteredPen=planFilter&&planFilter.size>0?pend.filter(o=>{
+    const th=toFloat(o.Thickness)||"?";
+    const op=parseMat(String(o.Material||""));
+    const od=op.od?`${op.od==="22"?"2.2":op.od==="25"?"2.5":"2.8"} OD`:"? OD";
+    const key=`${th}µ · ${od}`;
+    return planFilter.has(key);
+  }):pend;
+  const filterInfo=planFilter&&planFilter.size>0?`${planFilter.size} film type${planFilter.size>1?"s":""} selected`:"All film types";
   const today=new Date().toLocaleDateString("en-IN",{day:"2-digit",month:"2-digit",year:"numeric"});
 
   const generate=()=>{
     setGenerating(true);
     setTimeout(()=>{
-      const rows=smartPlan(pen,bare,mj,fgjm,cfg,mode,priorities);
+      const rows=smartPlan(filteredPen,bare,mj,fgjm,cfg,mode,priorities);
       setPlanRows(rows);
       // Transform BARE rows into proper MetSeq rows with setNo, cumMeters, odType etc.
       const rawMetRows=rows.filter(r=>r.source==="BARE"&&r.included);
@@ -1906,7 +1799,7 @@ function PlanBuilderNew({pen, mj, fgjm, bare, cfg, metPlan, setMetPlan, onViewSe
       <div style={{display:"flex",gap:12,alignItems:"center",flexWrap:"wrap",padding:"16px 18px",background:"linear-gradient(135deg,#0f1e3a,#1a305c)",borderRadius:14,border:"1px solid rgba(251,191,36,.2)"}}>
         <div style={{flex:1}}>
           <div style={{color:"#fff",fontWeight:800,fontSize:14}}>Ready to generate GLS/MET/F/04 plan</div>
-          <div style={{color:"rgba(255,255,255,.45)",fontSize:12,marginTop:2}}>{pend.length} orders · {mode==="both"?"M-1 & M-2 both":mode} · {priorities.length>0?`${priorities.length} priority overrides`:"Auto priority by delivery date"}</div>
+          <div style={{color:"rgba(255,255,255,.45)",fontSize:12,marginTop:2}}>{pend.length} orders · {mode==="both"?"M-1 & M-2 both":mode} · {priorities.length>0?`${priorities.length} priority overrides`:"Auto priority by delivery date"} · {filterInfo}</div>
         </div>
         <button onClick={generate} disabled={generating} style={{...btn("linear-gradient(135deg,#fde68a,#fbbf24)","#1a0a00",{fontWeight:900,padding:"13px 32px",fontSize:15,boxShadow:"0 4px 18px rgba(251,191,36,.4)"})}}>
           {generating?<><Spin size={18}/>Generating…</>:"⚡ Generate Plan"}
@@ -1946,6 +1839,7 @@ function App(){
   const [data,setData]=useState({pen:[],mj:[],fgjm:[],bare:[]});
   const [busy,setBusy]=useState("");
   const [metPlan,setMetPlan]=useState([]);
+  const [planFilter,setPlanFilter]=useState(null); // null=all, else Set of groupKeys
   const [metView,setMetView]=useState("M-1");
   const [expandedSet,setExpanded]=useState({});
   const [showAdmin,setShowAdmin]=useState(false);
@@ -1998,7 +1892,7 @@ function App(){
   const TH={background:"#eef1f7",color:"#4b5a6e",padding:"8px 11px",textAlign:"left",fontSize:11,fontWeight:700,letterSpacing:.4,textTransform:"uppercase",borderBottom:"2px solid #dde3ed",whiteSpace:"nowrap"};
   const TD={padding:"8px 11px",fontSize:13,color:C.text,borderBottom:"1px solid #dde3ed",verticalAlign:"middle"};
 
-  if(!user)return <LoginScreen onLogin={u=>{setUser(u);showToast(`Welcome, ${u.name}! 👋`);}}/>;
+  if(!user)return <LoginScreen onLogin={u=>{setUser(u);showToast(`Welcome, ${u.name}! 👋`);}} installable={installable} onInstall={installApp}/>;
 
   return(
     <>
@@ -2107,14 +2001,14 @@ function App(){
           {tab==="analysis"&&data.pen.length>0&&(
             <PendencyAnalysis
               pen={data.pen} mj={data.mj} fgjm={data.fgjm} bare={data.bare} cfg={cfg}
-              onMakePlan={()=>setTab("plan")}/>
+              onMakePlan={(filter)=>{setPlanFilter(filter);setTab("plan");}}/>
           )}
 
           {/* ── PLAN BUILDER TAB ── */}
           {tab==="plan"&&data.pen.length>0&&(
             <PlanBuilderNew
               pen={data.pen} mj={data.mj} fgjm={data.fgjm} bare={data.bare} cfg={cfg}
-              metPlan={metPlan} setMetPlan={setMetPlan}
+              metPlan={metPlan} setMetPlan={setMetPlan} planFilter={planFilter}
               onViewSeq={()=>setTab("metseq")}/>
           )}
 
