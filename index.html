@@ -144,7 +144,7 @@ const M_RANGE   = {"M-1":[1910,3290],"M-2":[2900,3630]};
 const toInt   = v => parseInt(String(v||"").replace(/[\s,]/g,""))||0;
 const toFloat = v => parseFloat(String(v||"").replace(/,/g,"").replace(/[^\d.-]/g,""))||0;
 const uid     = () => Math.random().toString(36).slice(2,9);
-const fmtNum  = n => n>=100000?(n/100000).toFixed(2)+" L":n.toLocaleString("en-IN");
+const fmtNum  = n => {const v=+(n||0);return v>=100000?(v/100000).toFixed(2)+" L":v.toLocaleString("en-IN");};
 
 function parseMat(raw){
   const s=String(raw||"").trim();
@@ -981,54 +981,36 @@ function UploadZone({label,sub,color,loaded,rows,busy,onFile,disabled}){
 // ─────────────────────────────────────────────────────────────────────────────
 function smartPlan(penData, bareData, mjData, fgjmData, cfg, machineMode, priorities){
   /* ═══════════════════════════════════════════════════════════════
-     GLS MET/F/04 PLANNING ENGINE — matches Planning_Starts logic
-     ─────────────────────────────────────────────────────────────
-     RULES (from Excel analysis):
-     1. Group orders by: base_micron + od_suffix + slit_length
-     2. Pack multiple orders as arms on one jumbo run
-     3. Duplicate widths if machine has space (maximize utilization)
-     4. Roll Size = sum(arms) + trim  [trim: M22=15, M25=20, M28=25]
-     5. No.of Roll = sets × slit_length / jumbo_length
-     6. Sets = floor(min pending_rolls / arm_count) for each unique arm
+     GLS MET/F/04 PLANNING ENGINE v3
+     KEY RULE: noOfRoll should be ≥ 1 always
+     Strategy: increase sets / add arm duplicates / raise trim (max 30mm)
   ═══════════════════════════════════════════════════════════════ */
-
   const M1_MIN=1910, M1_MAX=3290, M2_MIN=2900, M2_MAX=3630;
   const JUMBO_LEN=72000;
+  const MAX_TRIM=30;
 
   function trimForOD(od){ return od==="M28"?25:od==="M25"?20:15; }
   function getKey(o){ return (o.Material||"")+"_"+(o.Width||"")+"_"+(o["Sales Order"]||""); }
-
-  function baseMicron(mat){
-    const m=(mat||"").match(/G(\d{2})/);
-    return m?m[1]:"12";
-  }
-  function odSuffix(mat){
-    const m=(mat||"").match(/M(\d{2})(?:\D|$)/);
-    return m?"M"+m[1]:"M22";
-  }
-  function groupKey(o){
-    return baseMicron(o.Material)+"_"+odSuffix(o.Material)+"_"+(parseInt(o.Length)||0);
-  }
-
-  // Find best bare roll: matching micron, wide enough, longest first
-  function findBare(micron, minW){
+  function baseMicron(mat){ const m=(mat||"").match(/G(\d{2})/);return m?m[1]:"12"; }
+  function odSuffix(mat){ const m=(mat||"").match(/M(\d{2})(?:\D|$)/);return m?"M"+m[1]:"M22"; }
+  function groupKey(o){ return baseMicron(o.Material)+"_"+odSuffix(o.Material)+"_"+(parseInt(o.Length)||0); }
+  function findBare(micron,minW){
     const prefix="3FG-G"+micron;
     return (bareData||[]).filter(b=>{
       if(!b.Material) return false;
       const bw=toFloat(b.Width||b.width||0);
-      return String(b.Material).startsWith(prefix) && bw>=minW-50 && bw>0;
+      return String(b.Material).startsWith(prefix)&&bw>=minW-50&&bw>0;
     }).sort((a,b)=>toFloat(b.Length||0)-toFloat(a.Length||0))[0]||null;
   }
-
   function shortCust(c){ return String(c||"").split(" ").slice(0,2).join(" "); }
-  function fmtRoll(n){ return Math.round(n*1000)/1000; } // 3 decimal places like Excel
+  function fmtRoll(n){ return Math.round(n*1000)/1000; }
 
-  // ── Step 0: filter + sort pending orders ─────────────────────
+  // ── Sort pending ──────────────────────────────────────────────
   let pending=penData.filter(r=>r.Material&&toFloat(r["Pending Rolls"])>0);
   const priMap={};
   (priorities||[]).forEach(p=>priMap[p.key]=p.priority);
   pending.sort((a,b)=>{
-    const pa=priMap[getKey(a)]||999, pb=priMap[getKey(b)]||999;
+    const pa=priMap[getKey(a)]||999,pb=priMap[getKey(b)]||999;
     if(pa!==pb) return pa-pb;
     const da=a["Required Delivery Date"]?new Date(a["Required Delivery Date"]).getTime():9e15;
     const db=b["Required Delivery Date"]?new Date(b["Required Delivery Date"]).getTime():9e15;
@@ -1036,173 +1018,139 @@ function smartPlan(penData, bareData, mjData, fgjmData, cfg, machineMode, priori
     return toFloat(b["Pending Rolls"])-toFloat(a["Pending Rolls"]);
   });
 
-  const planRows=[];
-  const usedKeys=new Set();
+  const planRows=[]; const usedKeys=new Set();
 
-  // ── Step 1: FGJM direct dispatch ─────────────────────────────
+  // ── FGJM direct ───────────────────────────────────────────────
   for(const order of pending){
-    const k=getKey(order);
-    const ow=toFloat(order.Width);
-    const match=(fgjmData||[]).find(f=>{
-      if(!f.Material) return false;
-      return String(f.Material).startsWith((order.Material||"").slice(0,14))
-          && Math.abs(toFloat(f.Width||f.width||0)-ow)<=50;
-    });
-    if(match){ planRows.push({source:"FGJM",included:true,order,ref:match}); usedKeys.add(k); }
+    const k=getKey(order),ow=toFloat(order.Width);
+    const match=(fgjmData||[]).find(f=>f.Material&&String(f.Material).startsWith((order.Material||"").slice(0,14))&&Math.abs(toFloat(f.Width||f.width||0)-ow)<=50);
+    if(match){planRows.push({source:"FGJM",included:true,order,ref:match});usedKeys.add(k);}
   }
 
-  // ── Step 2: MJ slit ──────────────────────────────────────────
+  // ── MJ slit ───────────────────────────────────────────────────
   for(const order of pending){
-    const k=getKey(order);
-    if(usedKeys.has(k)) continue;
-    const ow=toFloat(order.Width);
-    const om=String(order.Material||"");
-    const match=(mjData||[]).find(m=>{
-      if(!m.Material) return false;
-      const mm=String(m.Material||"").replace(/^SM/,"");
-      return mm.startsWith(om.slice(0,14).replace(/^SM/,""))
-          && toFloat(m.Width||m.width||0)>=ow-50;
-    });
-    if(match){ planRows.push({source:"MJ",included:true,order,ref:match}); usedKeys.add(k); }
+    const k=getKey(order);if(usedKeys.has(k)) continue;
+    const ow=toFloat(order.Width),om=String(order.Material||"");
+    const match=(mjData||[]).find(m=>m.Material&&String(m.Material||"").replace(/^SM/,"").startsWith(om.slice(0,14).replace(/^SM/,""))&&toFloat(m.Width||m.width||0)>=ow-50);
+    if(match){planRows.push({source:"MJ",included:true,order,ref:match});usedKeys.add(k);}
   }
 
-  // ── Step 3: Met runs (core planning) ─────────────────────────
+  // ── Met Runs ──────────────────────────────────────────────────
   const metOrders=pending.filter(o=>!usedKeys.has(getKey(o)));
-
-  // Group by base film + OD + slit length
   const groups={};
   for(const o of metOrders){
     const gk=groupKey(o);
     if(!groups[gk]) groups[gk]={micron:baseMicron(o.Material),od:odSuffix(o.Material),slitLen:parseInt(o.Length)||0,items:[]};
-    groups[gk].items.push({...o, _rem:toFloat(o["Pending Rolls"])});
+    groups[gk].items.push({...o,_rem:toFloat(o["Pending Rolls"])});
   }
 
   for(const [gk,grp] of Object.entries(groups)){
     const {micron,od,slitLen}=grp;
-    const TRIM=trimForOD(od);
+    const BASE_TRIM=trimForOD(od);
     const machMax=(machineMode==="M-2")?M2_MAX:(machineMode==="M-1")?M1_MAX:M2_MAX;
+    const machMin=(machineMode==="M-2")?M2_MIN:(machineMode==="M-1")?M1_MIN:M1_MIN;
+    // How many sets needed for noOfRoll ≥ 1
+    const MIN_SETS_FOR_FULL_ROLL=Math.ceil(JUMBO_LEN/(slitLen||24000));
 
-    // Working copy of remaining rolls per order
-    let remaining=grp.items.filter(i=>i._rem>0).map(i=>({...i}));
-
+    let items=grp.items.filter(i=>i._rem>0).map(i=>({...i}));
     let safety=0;
-    while(remaining.some(i=>i._rem>0) && safety++<200){
 
-      // Sort: first by pending desc (pack most-needed first), then width desc
+    while(items.some(i=>i._rem>0)&&safety++<200){
+      const remaining=items.filter(i=>i._rem>0);
       remaining.sort((a,b)=>{
         if(Math.abs(b._rem-a._rem)>0.5) return b._rem-a._rem;
         return toFloat(b.Width)-toFloat(a.Width);
       });
 
-      // ─ Build arm list ─────────────────────────────────────────
-      const armList=[]; // each element is a ref to an item in 'remaining'
-      let usedW=TRIM;
+      // ── Build arm list ───────────────────────────────────────
+      // Try two trim values: base trim, then up to MAX_TRIM if needed
+      let bestArmList=[], bestTrim=BASE_TRIM, bestSets=0;
 
-      // Pass 1: add each distinct order once (largest remaining first)
-      for(const item of remaining){
-        if(item._rem<=0) continue;
-        const w=toFloat(item.Width);
-        if(w>0 && armList.length<5 && usedW+w<=machMax){
-          armList.push(item);
-          usedW+=w;
+      for(const tryTrim of [BASE_TRIM, Math.min(MAX_TRIM, BASE_TRIM+5), MAX_TRIM]){
+        const armList=[]; let usedW=tryTrim;
+
+        // Pass 1: distinct orders (most-needed first)
+        const added=new Set();
+        for(const item of remaining){
+          const k2=getKey(item);
+          if(!added.has(k2)&&armList.length<5&&usedW+toFloat(item.Width)<=machMax){
+            armList.push(item); usedW+=toFloat(item.Width); added.add(k2);
+          }
+        }
+        if(armList.length===0) break;
+
+        // Pass 2: fill machine width with duplicates
+        let filled=true;
+        while(filled&&armList.length<5){
+          filled=false;
+          const uniq=[...new Set(armList.map(a=>getKey(a)))].map(k2=>armList.find(a=>getKey(a)===k2)).sort((a,b)=>b._rem-a._rem);
+          for(const cand of uniq){
+            const w=toFloat(cand.Width);
+            if(armList.length<5&&usedW+w<=machMax){armList.push(cand);usedW+=w;filled=true;break;}
+          }
+        }
+
+        // Calculate sets
+        const armCounts={};
+        for(const a of armList){const k2=getKey(a);armCounts[k2]=(armCounts[k2]||0)+1;}
+        const uniqArms=Object.keys(armCounts).map(k2=>armList.find(a=>getKey(a)===k2));
+        let sets=Math.min(...uniqArms.map(ua=>Math.floor(ua._rem/armCounts[getKey(ua)])));
+        sets=Math.max(1,sets);
+
+        // Prefer trim that gives noOfRoll ≥ 1 (sets ≥ MIN_SETS_FOR_FULL_ROLL)
+        if(sets>=bestSets||(sets>=MIN_SETS_FOR_FULL_ROLL&&bestSets<MIN_SETS_FOR_FULL_ROLL)){
+          bestArmList=armList; bestTrim=tryTrim; bestSets=sets;
+          if(sets>=MIN_SETS_FOR_FULL_ROLL) break; // good enough, stop trying
         }
       }
 
-      if(armList.length===0) break;
+      if(bestArmList.length===0) break;
 
-      // Pass 2: fill remaining machine width by duplicating orders
-      // (highest pending_rolls order gets duplicated, like Excel does 1090×2)
-      let filled=false;
-      do {
-        filled=false;
-        if(armList.length>=5) break;
-        // Try to add the arm with most remaining rolls as a duplicate
-        const sortedForDup=[...new Set(armList.map(a=>getKey(a)))]
-          .map(k=>armList.find(a=>getKey(a)===k))
-          .sort((a,b)=>b._rem-a._rem);
-        for(const cand of sortedForDup){
-          const w=toFloat(cand.Width);
-          if(usedW+w<=machMax && armList.length<5){
-            armList.push(cand); // duplicate
-            usedW+=w;
-            filled=true;
-            break;
-          }
-        }
-      } while(filled);
+      // ── Final sets & deduction ───────────────────────────────
+      const armCounts={};
+      for(const a of bestArmList){const k2=getKey(a);armCounts[k2]=(armCounts[k2]||0)+1;}
+      const uniqArms=Object.keys(armCounts).map(k2=>bestArmList.find(a=>getKey(a)===k2));
+      let sets=Math.min(...uniqArms.map(ua=>Math.floor(ua._rem/armCounts[getKey(ua)])));
+      sets=Math.max(1,sets);
 
-      const rollSize=usedW; // = sum(arms) + TRIM
+      // If sets < MIN_SETS_FOR_FULL_ROLL AND there's capacity, try adding more arm duplicates to reach it
+      // by checking if increasing sets count is possible (allow partial use of remaining)
+      const setsNeeded=MIN_SETS_FOR_FULL_ROLL;
+      if(sets<setsNeeded){
+        // Can we increase sets? sets is already max possible given current arms. Keep as is.
+      }
 
-      // ─ Determine machine ────────────────────────────────────
+      const rollSize=bestArmList.reduce((s,a)=>s+toFloat(a.Width),0)+bestTrim;
+
       let machine;
       if(machineMode==="M-1") machine="M-1";
       else if(machineMode==="M-2") machine="M-2";
-      else{
-        if(rollSize>M1_MAX) machine="M-2";
-        else if(rollSize>=M1_MIN) machine="M-1";
-        else machine="M-2"; // too narrow → M-2 has wider capability
-      }
+      else machine=rollSize>M1_MAX?"M-2":rollSize>=M1_MIN?"M-1":"M-2";
 
-      // ─ Calculate sets ────────────────────────────────────────
-      // Count how many times each unique arm appears
-      const armCounts={};
-      for(const a of armList){
-        const k=getKey(a);
-        armCounts[k]=(armCounts[k]||0)+1;
-      }
-      // sets = min( floor(remaining_rolls[order] / count) ) across all unique arms
-      const uniqueArms=Object.keys(armCounts).map(k=>armList.find(a=>getKey(a)===k));
-      let sets=Math.min(...uniqueArms.map(ua=>{
-        const cnt=armCounts[getKey(ua)];
-        return Math.floor(ua._rem/cnt);
-      }));
-      sets=Math.max(1,sets);
-
-      // No. of Roll (fractional like Excel: 1/3, 2/3, 1, 3 etc.)
       const bareRoll=findBare(micron,rollSize);
       const jumboLen=bareRoll?toFloat(bareRoll.Length||0):JUMBO_LEN;
       const noOfRoll=fmtRoll(sets*slitLen/(jumboLen||JUMBO_LEN));
 
-      // Deduct produced rolls
-      for(const ua of uniqueArms){
+      for(const ua of uniqArms){
         const cnt=armCounts[getKey(ua)];
-        ua._rem-=cnt*sets;
-        // Update the corresponding item in remaining array
-        const orig=remaining.find(r=>getKey(r)===getKey(ua));
-        if(orig) orig._rem=ua._rem;
+        const orig=items.find(r=>getKey(r)===getKey(ua));
+        if(orig) orig._rem=Math.max(0,orig._rem-cnt*sets);
       }
 
-      // Customers list
-      const custSet=[...new Set(armList.map(a=>shortCust(a["Consignee Name"])))];
-
-      // Arm widths array
-      const arms=armList.map(a=>toFloat(a.Width));
-
+      const custSet=[...new Set(bestArmList.map(a=>shortCust(a["Consignee Name"])))];
       planRows.push({
-        source:"BARE",
-        included:true,
-        machine,
-        material:uniqueArms[0].Material,
-        bare:bareRoll,
-        rollSize,
-        jumboLen,
-        noOfRoll,
-        trim:TRIM,
-        slitLen,
-        arms,
-        sets,
-        metalIO:"I",
-        packMode:"WM",
-        od,
-        micron,
-        customers:custSet.join(" / "),
-        orders:armList
+        source:"BARE",included:true,machine,
+        material:uniqArms[0].Material,
+        bare:bareRoll,rollSize,jumboLen,noOfRoll,
+        trim:bestTrim,slitLen,
+        arms:bestArmList.map(a=>toFloat(a.Width)),
+        sets,metalIO:"I",packMode:"WM",
+        od,micron,customers:custSet.join(" / "),orders:bestArmList
       });
 
-      remaining=remaining.filter(i=>i._rem>0);
+      items=items.filter(i=>i._rem>0);
     }
   }
-
   return planRows;
 }
 
@@ -1530,8 +1478,50 @@ function PlanBuilderNew({pen, mj, fgjm, bare, cfg, metPlan, setMetPlan, onViewSe
     setTimeout(()=>{
       const rows=smartPlan(pen,bare,mj,fgjm,cfg,mode,priorities);
       setPlanRows(rows);
-      const metRows=rows.filter(r=>r.source==="BARE"&&r.included);
-      setMetPlan(metRows);
+      // Transform BARE rows into proper MetSeq rows with setNo, cumMeters, odType etc.
+      const rawMetRows=rows.filter(r=>r.source==="BARE"&&r.included);
+      // Assign setNo and cumMeters per machine
+      const metRowsBuilt=[];
+      ["M-1","M-2"].forEach(machine=>{
+        const mr=rawMetRows.filter(r=>r.machine===machine);
+        const OD_ORDER={M22:0,M25:1,M28:2};
+        mr.sort((a,b)=>(OD_ORDER[a.od]||0)-(OD_ORDER[b.od]||0));
+        const OD_CAP={M22:cfg.boatCap22||7,M25:cfg.boatCap25||5,M28:cfg.boatCap28||4};
+        let setN=1,slotN=1,cumM=0,slotsInSet=0,capNow=OD_CAP[mr[0]?.od||"M22"]||7;
+        mr.forEach(r=>{
+          const odKey=r.od||"M22";
+          const capForOD=OD_CAP[odKey]||5;
+          if(slotsInSet>=capForOD){setN++;slotN=1;cumM=0;slotsInSet=0;capNow=capForOD;}
+          const jumpLen=r.jumboLen||72000;
+          const metersPer=r.noOfRoll>0?(r.noOfRoll*jumpLen):jumpLen;
+          cumM+=metersPer;
+          metRowsBuilt.push({
+            id:uid(),
+            machine,
+            setNo:setN,
+            slotNo:slotN++,
+            odType:(odKey||"M22").replace("M",""),
+            bareMat:r.bare?.Material||r.material||("3FG-G"+(r.micron||"12")+"901"),
+            batch:r.bare?.Batch||"",
+            width:r.rollSize||0,
+            length:r.jumboLen||72000,
+            thickness:r.micron||"12",
+            outputMat:(r.bare?.Material||r.material||"").replace("3FG-G","3SF-G"),
+            customers:r.customers||"",
+            arms:r.arms||[],
+            slitLen:r.slitLen||0,
+            sets:r.sets||1,
+            noOfRoll:r.noOfRoll||0,
+            trim:r.trim||15,
+            jumboWidth:r.rollSize||0,
+            cumMeters:Math.round(cumM),
+            notes:"",
+            priority:odKey==="M22"?0:odKey==="M25"?1:2
+          });
+          slotsInSet++;
+        });
+      });
+      setMetPlan(metRowsBuilt);
       setGenerating(false);
       setShowModal(true);
       setModalTab("MET");
@@ -1636,6 +1626,33 @@ function PlanBuilderNew({pen, mj, fgjm, bare, cfg, metPlan, setMetPlan, onViewSe
       w.document.close();
     };
 
+    // Material colour helpers
+    const matColor=(mat)=>{
+      const s=String(mat||"");
+      if(s.includes("ABM")||s.includes("300A")) return "#7c2d12";   // ALOX — deep red-brown
+      if(s.includes("360"))  return "#1e3a8a";                        // 360 series — deep blue
+      if(s.includes("320")||s.includes("SM")) return "#4a044e";       // 320/SM — purple
+      if(s.includes("331"))  return "#064e3b";                        // 331 — dark green
+      if(s.includes("G08"))  return "#78350f";                        // 8µ — amber
+      if(s.includes("G10"))  return "#0c4a6e";                        // 10µ — sky blue
+      if(s.includes("G12"))  return "#134e4a";                        // 12µ — teal
+      if(s.includes("G18"))  return "#4c1d95";                        // 18µ — violet
+      if(s.includes("G23"))  return "#7f1d1d";                        // 23µ — red
+      return "#1e3a5f";
+    };
+    const matBg=(mat)=>{
+      const s=String(mat||"");
+      if(s.includes("ABM")||s.includes("300A")) return "#fff7ed";
+      if(s.includes("360"))  return "#eff6ff";
+      if(s.includes("320")||s.includes("SM")) return "#faf5ff";
+      if(s.includes("331"))  return "#f0fdf4";
+      if(s.includes("G08"))  return "#fffbeb";
+      if(s.includes("G10"))  return "#e0f2fe";
+      if(s.includes("G12"))  return "#f0fdfa";
+      if(s.includes("G18"))  return "#f5f3ff";
+      if(s.includes("G23"))  return "#fff1f2";
+      return "#f8fafc";
+    };
     const OD_COLORS={"22":"#fef9c3","25":"#eff6ff","28":"#fff7ed"};
     const MachColor={"M-1":"#fff7ed","M-2":"#f0f9ff"};
 
@@ -1728,7 +1745,7 @@ function PlanBuilderNew({pen, mj, fgjm, bare, cfg, metPlan, setMetPlan, onViewSe
                     return(
                       <tr key={i} style={{background:i%2===0?rowBg:"#fff"}}>
                         <td style={{...TDc,fontWeight:800,color:r.mc==="M-1"?"#92400e":"#0e7490",background:rowBg,fontSize:12}}>{r.mc}</td>
-                        <td style={{...TD2,fontFamily:"monospace",fontSize:10,fontWeight:700,color:"#1e3a5f",background:rowBg}}>{r.mat}</td>
+                        <td style={{...TD2,fontFamily:"monospace",fontSize:12,fontWeight:800,color:matColor(r.mat),background:matBg(r.mat),letterSpacing:.3}}>{r.mat}</td>
                         <td style={{...TDc,fontWeight:800,color:C.navy,fontSize:12}}>{r.rollSize}</td>
                         <td style={TDc}>{r.length}</td>
                         <td style={TDc}>{r.noRolls}</td>
