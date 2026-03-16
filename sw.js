@@ -1,54 +1,50 @@
-// Plan Power — Service Worker v4.0
-const CACHE_NAME = "planpower-v4";
-const ASSETS = [
-  "/",
-  "/index.html",
-  "/manifest.json",
-  "/icons/icon-192.png",
-  "/icons/icon-512.png",
-  "/icons/apple-touch-icon.png",
-  "/icons/icon-144.png",
-  "/icons/icon-152.png"
-];
+// Plan Power Service Worker v10
+const CACHE_NAME = 'plan-power-v10';
+const OFFLINE_URL = './';
 
-// Install — pre-cache core assets
-self.addEventListener("install", e => {
-  console.log("[SW] Installing v4...");
-  e.waitUntil(
-    caches.open(CACHE_NAME)
-      .then(cache => cache.addAll(ASSETS))
-      .then(() => {
-        console.log("[SW] v4 installed");
-        return self.skipWaiting(); // take over immediately
-      })
+// Install — cache the main page
+self.addEventListener('install', function(event) {
+  self.skipWaiting();
+  event.waitUntil(
+    caches.open(CACHE_NAME).then(function(cache) {
+      return cache.addAll([OFFLINE_URL]);
+    })
   );
 });
 
-// Activate — delete ALL old caches
-self.addEventListener("activate", e => {
-  console.log("[SW] Activating v4, clearing old caches...");
-  e.waitUntil(
-    caches.keys().then(keys =>
-      Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => {
-        console.log("[SW] Deleting old cache:", k);
-        return caches.delete(k);
-      }))
-    ).then(() => self.clients.claim())
+// Activate — clean old caches
+self.addEventListener('activate', function(event) {
+  event.waitUntil(
+    caches.keys().then(function(keys) {
+      return Promise.all(
+        keys.filter(function(k) { return k !== CACHE_NAME; })
+            .map(function(k) { return caches.delete(k); })
+      );
+    }).then(function() { return clients.claim(); })
   );
 });
 
 // Fetch — network first, fallback to cache
-self.addEventListener("fetch", e => {
-  if (e.request.method !== "GET") return;
-  e.respondWith(
-    fetch(e.request)
-      .then(res => {
-        if (res && res.status === 200) {
-          const clone = res.clone();
-          caches.open(CACHE_NAME).then(c => c.put(e.request, clone));
-        }
-        return res;
-      })
-      .catch(() => caches.match(e.request))
+self.addEventListener('fetch', function(event) {
+  // Skip non-GET and CDN requests
+  if (event.request.method !== 'GET') return;
+  var url = new URL(event.request.url);
+  if (url.origin !== location.origin) return;
+
+  event.respondWith(
+    fetch(event.request).then(function(response) {
+      // Cache successful responses
+      if (response.ok) {
+        var clone = response.clone();
+        caches.open(CACHE_NAME).then(function(cache) {
+          cache.put(event.request, clone);
+        });
+      }
+      return response;
+    }).catch(function() {
+      return caches.match(event.request).then(function(cached) {
+        return cached || caches.match(OFFLINE_URL);
+      });
+    })
   );
 });
